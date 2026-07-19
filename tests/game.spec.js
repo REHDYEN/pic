@@ -1,17 +1,30 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Cyberpunk Cat Platformer', () => {
-  test('Game loads and UI is visible', async ({ page }) => {
+test.describe('Neon Arcade OS', () => {
+  test('Main menu loads and can launch Cyberpunk Cat', async ({ page }) => {
     await page.goto('file://' + require('path').resolve(__dirname, '../index.html'));
-    const canvas = page.locator('#gameCanvas');
-    await expect(canvas).toBeVisible();
+
+    // Check main menu
+    const mainMenu = page.locator('#main-menu');
+    await expect(mainMenu).toBeVisible();
+    await expect(page.locator('h1')).toHaveText('NEON ARCADE OS');
+
+    // Launch game
+    await page.click('#btn-game-cat');
+    await page.waitForTimeout(500);
+
+    // Verify game UI is visible
+    const ui = page.locator('#ui');
+    await expect(ui).toBeVisible();
     await expect(page.locator('#score-container')).toContainText('DATA: 0');
     await expect(page.locator('#lives-container')).toContainText('LIVES: 3');
   });
 
-  test('Player can move right and jump', async ({ page }) => {
+  test('Player can move right and jump in Cyberpunk Cat', async ({ page }) => {
     await page.goto('file://' + require('path').resolve(__dirname, '../index.html'));
+    await page.click('#btn-game-cat');
     await page.waitForTimeout(500);
+
     await page.keyboard.down('ArrowRight');
     await page.waitForTimeout(500);
     await page.keyboard.down('ArrowUp');
@@ -40,8 +53,9 @@ test.describe('Cyberpunk Cat Platformer', () => {
     await expect(btnPlay).toHaveText('⏸ PAUSE');
   });
 
-  test('Player can reach the goal and load next level', async ({ page }) => {
+  test('Player can reach the goal and load next level in Cyberpunk Cat', async ({ page }) => {
       await page.goto('file://' + require('path').resolve(__dirname, '../index.html'));
+      await page.click('#btn-game-cat');
       await page.waitForTimeout(500);
 
       // Verify we are on level 0

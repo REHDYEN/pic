@@ -29,35 +29,42 @@
   #radio-stations { background: #000; color: #0ff; border: 1px solid #0ff; padding: 5px; font-family: 'Courier New', Courier, monospace; outline: none; cursor: pointer; }
   #radio-controls { display: flex; gap: 10px; align-items: center; margin-top: 5px; }
   #radio-vol { width: 80px; accent-color: #f0f; cursor: pointer; }
+  #radio-visualizer { display: flex; gap: 3px; height: 20px; align-items: flex-end; margin-top: 5px; justify-content: center; }
+  .vis-bar { width: 5px; background: #0ff; box-shadow: 0 0 5px #0ff; transition: height 0.1s; }
+
+  #main-menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #050510; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 95; }
+  #main-menu h1 { color: #f0f; text-shadow: 0 0 20px #f0f; font-size: 48px; text-align: center; margin-bottom: 50px; }
+  .menu-btn { background: rgba(0, 255, 255, 0.1); border: 2px solid #0ff; border-radius: 10px; padding: 15px 30px; color: #0ff; text-shadow: 0 0 5px #0ff; box-shadow: 0 0 15px #0ff; cursor: pointer; font-size: 24px; font-weight: bold; margin: 15px; width: 300px; text-align: center; transition: all 0.2s; }
+  .menu-btn:hover { background: rgba(0, 255, 255, 0.3); transform: scale(1.05); }
+
+  #btn-menu-back { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: none; padding: 5px 15px; font-size: 16px; z-index: 90; }
+
+  #cat-meme { position: absolute; bottom: 20px; right: 20px; font-size: 40px; display: none; filter: drop-shadow(0 0 10px #f0f); animation: bounce 0.5s infinite alternate; z-index: 100; pointer-events: none;}
+  @keyframes bounce { from { transform: translateY(0); } to { transform: translateY(-10px); } }
+
+  /* Hide game UI initially */
+  #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
 </style>
 </head>
 <body>
 
+<div id="main-menu">
+  <h1>NEON ARCADE OS</h1>
+  <div id="btn-game-cat" class="menu-btn">Cyberpunk Cat</div>
+  <div id="btn-game-race" class="menu-btn">Carreras de Neón</div>
+  <div id="btn-game-shoot" class="menu-btn">Defensor de la Red</div>
+</div>
+
 <canvas id="gameCanvas"></canvas>
+<div id="btn-menu-back" class="btn">VOLVER AL MENÚ</div>
+<div id="cat-meme">😺</div>
+
 <div id="ui">
   <div id="score-container">DATA: <span id="score">0</span></div>
   <div id="lives-container">LIVES: <span id="lives">3</span></div>
   <div id="msg-container">
     <div id="msg-text">NIVEL COMPLETADO</div>
     <div id="btn-restart" class="btn">REINICIAR SISTEMA</div>
-  </div>
-
-
-  <div id="radio-container">
-    <div id="radio-header">📻 CYBER-FLOW RADIO</div>
-    <select id="radio-stations">
-      <option value="">[ SISTEMA OFFLINE ]</option>
-      <option value="https://streams.ilovemusic.de/iloveradio109.mp3">Cyberpunk / Synthwave</option>
-      <option value="https://streams.ilovemusic.de/iloveradio14.mp3">Latino Flow / Urban</option>
-      <option value="https://streams.ilovemusic.de/iloveradio17.mp3">Lofi Chill (Hacking...)</option>
-      <option value="http://icecast.vrtcdn.be/mnm-hits.mp3">MNM Hits (Mundo)</option>
-      <option value="https://streams.ilovemusic.de/iloveradio1.mp3">Top 40 / Pop</option>
-    </select>
-    <div id="radio-controls">
-      <button id="btn-radio-play" class="btn" style="padding: 5px 10px; font-size: 14px; margin-top: 0; box-shadow: 0 0 5px #0ff;">▶ PLAY</button>
-      <input type="range" id="radio-vol" min="0" max="1" step="0.05" value="0.3" title="Volumen">
-    </div>
-    <audio id="radio-player" style="display:none;" volume="0.3"></audio>
   </div>
 
   <div id="controls">
@@ -67,6 +74,35 @@
     </div>
     <div id="btn-jump" class="c-btn" style="border-color:#0ff; color:#0ff; box-shadow:0 0 10px #0ff; background:rgba(0,255,255,0.2);">▲</div>
   </div>
+</div>
+
+<!-- Global Radio outside UI so it persists across games -->
+<div id="radio-container">
+  <div id="radio-header">📻 CYBER-FLOW RADIO</div>
+  <select id="radio-stations">
+    <option value="">[ SISTEMA OFFLINE ]</option>
+    <option value="https://streams.ilovemusic.de/iloveradio109.mp3">Cyberpunk / Synthwave</option>
+    <option value="https://streams.ilovemusic.de/iloveradio14.mp3">Latino Flow / Urban</option>
+    <option value="https://streams.ilovemusic.de/iloveradio17.mp3">Lofi Chill (Hacking...)</option>
+    <!-- MNM Hits stream replaced with working VRT Studio Brussel stream due to user feedback -->
+    <option value="https://vrt.streamabc.net/vrt-stubru-live-mp3-128">Studio Brussel (Hits)</option>
+    <option value="https://streams.ilovemusic.de/iloveradio1.mp3">Top 40 / Pop</option>
+  </select>
+  <div id="radio-controls">
+    <button id="btn-radio-play" class="btn" style="padding: 5px 10px; font-size: 14px; margin-top: 0; box-shadow: 0 0 5px #0ff;">▶ PLAY</button>
+    <input type="range" id="radio-vol" min="0" max="1" step="0.05" value="0.3" title="Volumen">
+  </div>
+  <div id="radio-visualizer">
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+    <div class="vis-bar" style="height: 2px;"></div>
+  </div>
+  <audio id="radio-player" style="display:none;" crossorigin="anonymous" volume="0.3"></audio>
 </div>
 
 <script>
@@ -124,6 +160,8 @@ class AudioManager {
     setTimeout(() => this.playTone(500, 'square', 0.2, 0.1), 200);
     setTimeout(() => this.playTone(600, 'square', 0.4, 0.1), 400);
   }
+  shoot() { this.playTone(600, 'square', 0.1, 0.1, 100); }
+  explosion() { this.playNoise(0.4, 0.5); this.playTone(100, 'sawtooth', 0.4, 0.4, 20); }
 }
 const audio = new AudioManager();
 
@@ -635,27 +673,80 @@ class Level {
 }
 
 // --- GAME LOGIC ---
-class Game {
-  constructor() {
-    this.canvas = document.getElementById('gameCanvas');
+// --- GLOBAL INPUT STATE ---
+const globalInput = { left: false, right: false, jump: false, action: false };
+
+function setupGlobalInput() {
+  const setKey = (code, val) => {
+    if (code === 'ArrowLeft' || code === 'KeyA') globalInput.left = val;
+    if (code === 'ArrowRight' || code === 'KeyD') globalInput.right = val;
+    if (code === 'ArrowUp' || code === 'KeyW' || code === 'Space') {
+        globalInput.jump = val;
+        globalInput.action = val;
+        if(val && audio.ctx.state === 'suspended') audio.ctx.resume();
+    }
+  };
+  window.addEventListener('keydown', e => setKey(e.code, true));
+  window.addEventListener('keyup', e => setKey(e.code, false));
+
+  const addTouch = (id, prop) => {
+    let el = document.getElementById(id);
+    if(el) {
+      el.addEventListener('touchstart', e => { e.preventDefault(); globalInput[prop] = true; globalInput.action = true; audio.ctx.resume(); });
+      el.addEventListener('touchend', e => { e.preventDefault(); globalInput[prop] = false; globalInput.action = false; });
+    }
+  };
+  addTouch('btn-left', 'left');
+  addTouch('btn-right', 'right');
+  addTouch('btn-jump', 'jump');
+}
+setupGlobalInput();
+
+class PlatformerGame {
+  constructor(canvas) {
+    this.canvas = canvas;
     this.ctx = this.canvas.getContext('2d');
 
-    this.input = { left: false, right: false, jump: false };
-    this.setupInput();
+    this.input = globalInput;
 
     this.score = 0;
     this.lives = 3;
     this.currentLevelIndex = 0;
     this.state = 'PLAY'; // PLAY, DEAD, WIN
     this.particles = [];
+    this.isRunning = true;
 
     this.initLevel();
 
-    window.addEventListener('resize', () => this.resize());
+    this.resizeHandler = () => this.resize();
+    window.addEventListener('resize', this.resizeHandler);
     this.resize();
 
     this.lastTime = performance.now();
-    requestAnimationFrame((t) => this.loop(t));
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
+
+    this.restartBtn = document.getElementById('btn-restart');
+    this.restartHandler = () => {
+      if (this.lives <= 0 || this.currentLevelIndex >= LEVELS.length) {
+          this.lives = 3;
+          this.score = 0;
+          this.currentLevelIndex = 0;
+      }
+      this.initLevel();
+      this.updateUI();
+    };
+    this.restartBtn.addEventListener('click', this.restartHandler);
+
+    document.getElementById('ui').style.display = 'block';
+    this.updateUI();
+  }
+
+  stop() {
+    this.isRunning = false;
+    cancelAnimationFrame(this.rafId);
+    window.removeEventListener('resize', this.resizeHandler);
+    this.restartBtn.removeEventListener('click', this.restartHandler);
+    document.getElementById('ui').style.display = 'none';
   }
 
   resize() {
@@ -669,94 +760,6 @@ class Game {
     this.camera = { x: 0, y: 0 };
     this.state = 'PLAY';
     document.getElementById('msg-container').style.display = 'none';
-  }
-
-  setupInput() {
-    const setKey = (code, val) => {
-      if (code === 'ArrowLeft' || code === 'KeyA') this.input.left = val;
-      if (code === 'ArrowRight' || code === 'KeyD') this.input.right = val;
-      if (code === 'ArrowUp' || code === 'KeyW' || code === 'Space') {
-          this.input.jump = val;
-          if(val && this.ctx && audio.ctx.state === 'suspended') audio.ctx.resume(); // unlock audio
-      }
-    };
-    window.addEventListener('keydown', e => setKey(e.code, true));
-    window.addEventListener('keyup', e => setKey(e.code, false));
-
-
-    // --- CYBER-FLOW RADIO ---
-    const radioPlayer = document.getElementById('radio-player');
-    const radioStations = document.getElementById('radio-stations');
-    const btnRadioPlay = document.getElementById('btn-radio-play');
-    const radioVol = document.getElementById('radio-vol');
-
-    radioPlayer.volume = radioVol.value;
-
-    btnRadioPlay.addEventListener('click', () => {
-      if (radioPlayer.paused) {
-        if (!radioPlayer.src || radioPlayer.src === window.location.href) {
-          if (radioStations.value) {
-            radioPlayer.src = radioStations.value;
-          } else {
-            return; // No station selected
-          }
-        }
-        radioPlayer.play().catch(e => console.error("Radio play error:", e));
-        btnRadioPlay.innerText = "⏸ PAUSE";
-        btnRadioPlay.style.borderColor = "#f0f";
-        btnRadioPlay.style.color = "#f0f";
-        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
-      } else {
-        radioPlayer.pause();
-        btnRadioPlay.innerText = "▶ PLAY";
-        btnRadioPlay.style.borderColor = "#0ff";
-        btnRadioPlay.style.color = "#0ff";
-        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
-      }
-    });
-
-    radioStations.addEventListener('change', () => {
-      if (radioStations.value) {
-        radioPlayer.src = radioStations.value;
-        radioPlayer.play().catch(e => console.error("Radio play error:", e));
-        btnRadioPlay.innerText = "⏸ PAUSE";
-        btnRadioPlay.style.borderColor = "#f0f";
-        btnRadioPlay.style.color = "#f0f";
-        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
-      } else {
-        radioPlayer.pause();
-        radioPlayer.src = "";
-        btnRadioPlay.innerText = "▶ PLAY";
-        btnRadioPlay.style.borderColor = "#0ff";
-        btnRadioPlay.style.color = "#0ff";
-        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
-      }
-    });
-
-    radioVol.addEventListener('input', () => {
-      radioPlayer.volume = radioVol.value;
-    });
-
-    // Touch UI
-
-    const addTouch = (id, prop) => {
-      let el = document.getElementById(id);
-      el.addEventListener('touchstart', e => { e.preventDefault(); this.input[prop] = true; audio.ctx.resume(); });
-      el.addEventListener('touchend', e => { e.preventDefault(); this.input[prop] = false; });
-    };
-    addTouch('btn-left', 'left');
-    addTouch('btn-right', 'right');
-    addTouch('btn-jump', 'jump');
-
-    document.getElementById('btn-restart').addEventListener('click', () => {
-      if (this.lives <= 0 || this.currentLevelIndex >= LEVELS.length) {
-          this.lives = 3;
-          this.score = 0;
-          this.currentLevelIndex = 0;
-      }
-      this.initLevel();
-      this.updateUI();
-    });
   }
 
   spawnParticles(x, y, color, count=10) {
@@ -778,7 +781,8 @@ class Game {
   }
 
   loop(time) {
-    requestAnimationFrame((t) => this.loop(t));
+    if(!this.isRunning) return;
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
     let dt = (time - this.lastTime) / 1000;
     this.lastTime = time;
     if (dt > 0.1) dt = 0.1;
@@ -956,8 +960,494 @@ class Game {
 }
 
 // Init
-let game;
-window.onload = () => { game = new Game(); window.game = game; };
+class RacingGame {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = this.canvas.getContext('2d');
+    this.input = globalInput;
+    this.isRunning = true;
+    this.score = 0;
+    this.speed = 400;
+
+    this.player = { x: 0, y: 0, w: 40, h: 80, lane: 1 }; // 0: left, 1: center, 2: right
+    this.lanes = [];
+    this.obstacles = [];
+
+    this.resizeHandler = () => this.resize();
+    window.addEventListener('resize', this.resizeHandler);
+    this.resize();
+
+    this.lastTime = performance.now();
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
+
+    this.cooldown = 0;
+  }
+
+  stop() {
+    this.isRunning = false;
+    cancelAnimationFrame(this.rafId);
+    window.removeEventListener('resize', this.resizeHandler);
+  }
+
+  resize() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+    this.laneWidth = Math.min(200, this.canvas.width / 3);
+    this.lanes = [
+      this.canvas.width/2 - this.laneWidth,
+      this.canvas.width/2,
+      this.canvas.width/2 + this.laneWidth
+    ];
+    this.player.x = this.lanes[this.player.lane] - this.player.w/2;
+    this.player.y = this.canvas.height - 150;
+  }
+
+  loop(time) {
+    if(!this.isRunning) return;
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
+    let dt = (time - this.lastTime) / 1000;
+    this.lastTime = time;
+    if (dt > 0.1) dt = 0.1;
+
+    this.cooldown -= dt;
+    if (this.input.left && this.cooldown <= 0 && this.player.lane > 0) {
+      this.player.lane--;
+      this.cooldown = 0.2;
+      audio.shoot();
+    }
+    if (this.input.right && this.cooldown <= 0 && this.player.lane < 2) {
+      this.player.lane++;
+      this.cooldown = 0.2;
+      audio.shoot();
+    }
+
+    // Smooth lane transition
+    let targetX = this.lanes[this.player.lane] - this.player.w/2;
+    this.player.x += (targetX - this.player.x) * 15 * dt;
+
+    this.score += dt * 10;
+    this.speed += dt * 5;
+
+    // Spawn obstacles
+    if (Math.random() < 2 * dt) {
+      let lane = Math.floor(Math.random() * 3);
+      this.obstacles.push({
+        x: this.lanes[lane] - 30,
+        y: -100,
+        w: 60,
+        h: 40,
+        lane: lane
+      });
+    }
+
+    // Update obstacles
+    for (let i = this.obstacles.length - 1; i >= 0; i--) {
+      let obs = this.obstacles[i];
+      obs.y += this.speed * dt;
+
+      // Collision
+      if (this.player.x < obs.x + obs.w &&
+          this.player.x + this.player.w > obs.x &&
+          this.player.y < obs.y + obs.h &&
+          this.player.y + this.player.h > obs.y) {
+          audio.explosion();
+          this.score = 0;
+          this.speed = 400;
+          this.obstacles = [];
+          break;
+      }
+
+      if (obs.y > this.canvas.height) {
+        this.obstacles.splice(i, 1);
+      }
+    }
+
+    this.draw();
+  }
+
+  draw() {
+    let ctx = this.ctx;
+    ctx.fillStyle = "#050510";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Draw road
+    let roadW = this.laneWidth * 3;
+    let roadX = this.canvas.width/2 - roadW/2;
+    ctx.fillStyle = "#0a0a1a";
+    ctx.fillRect(roadX, 0, roadW, this.canvas.height);
+
+    // Draw lane dividers
+    ctx.strokeStyle = "#0ff";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 20]);
+    ctx.beginPath();
+    let offset = -(this.score * 50) % 40;
+    ctx.moveTo(this.lanes[0] + this.laneWidth/2, offset);
+    ctx.lineTo(this.lanes[0] + this.laneWidth/2, this.canvas.height);
+    ctx.moveTo(this.lanes[1] + this.laneWidth/2, offset);
+    ctx.lineTo(this.lanes[1] + this.laneWidth/2, this.canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw player (car)
+    ctx.fillStyle = "#f0f";
+    ctx.shadowColor = "#f0f";
+    ctx.shadowBlur = 15;
+    ctx.fillRect(this.player.x, this.player.y, this.player.w, this.player.h);
+
+    // Draw obstacles
+    ctx.fillStyle = "#ff0";
+    ctx.shadowColor = "#ff0";
+    for (let obs of this.obstacles) {
+      ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+    }
+    ctx.shadowBlur = 0;
+
+    // Score
+    ctx.fillStyle = "#0ff";
+    ctx.font = "24px Courier New";
+    ctx.fillText("SCORE: " + Math.floor(this.score), 20, 40);
+  }
+}
+
+class ShooterGame {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = this.canvas.getContext('2d');
+    this.input = globalInput;
+    this.isRunning = true;
+    this.score = 0;
+
+    this.player = { x: this.canvas.width/2, y: this.canvas.height - 50, w: 30, h: 30, speed: 400 };
+    this.bullets = [];
+    this.enemies = [];
+    this.particles = [];
+
+    this.resizeHandler = () => this.resize();
+    window.addEventListener('resize', this.resizeHandler);
+    this.resize();
+
+    this.lastTime = performance.now();
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
+
+    this.shootCooldown = 0;
+    this.enemySpawnTimer = 0;
+  }
+
+  stop() {
+    this.isRunning = false;
+    cancelAnimationFrame(this.rafId);
+    window.removeEventListener('resize', this.resizeHandler);
+  }
+
+  resize() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+    this.player.y = this.canvas.height - 50;
+  }
+
+  spawnParticles(x, y, color) {
+    for(let i=0; i<15; i++) {
+        this.particles.push({
+            x: x, y: y,
+            vx: (Math.random()-0.5)*200,
+            vy: (Math.random()-0.5)*200,
+            life: 0.5,
+            color: color
+        });
+    }
+  }
+
+  loop(time) {
+    if(!this.isRunning) return;
+    this.rafId = requestAnimationFrame((t) => this.loop(t));
+    let dt = (time - this.lastTime) / 1000;
+    this.lastTime = time;
+    if (dt > 0.1) dt = 0.1;
+
+    // Player movement
+    if (this.input.left) this.player.x -= this.player.speed * dt;
+    if (this.input.right) this.player.x += this.player.speed * dt;
+    this.player.x = Math.max(0, Math.min(this.canvas.width - this.player.w, this.player.x));
+
+    // Shooting
+    this.shootCooldown -= dt;
+    if (this.input.action && this.shootCooldown <= 0) {
+        this.bullets.push({ x: this.player.x + this.player.w/2 - 2, y: this.player.y, w: 4, h: 10, speed: -600 });
+        this.shootCooldown = 0.15;
+        audio.jump(); // re-use jump sound for pew
+    }
+
+    // Update bullets
+    for (let i = this.bullets.length - 1; i >= 0; i--) {
+        let b = this.bullets[i];
+        b.y += b.speed * dt;
+        if (b.y < -20) this.bullets.splice(i, 1);
+    }
+
+    // Spawn enemies
+    this.enemySpawnTimer -= dt;
+    if (this.enemySpawnTimer <= 0) {
+        this.enemies.push({
+            x: Math.random() * (this.canvas.width - 30),
+            y: -30,
+            w: 30,
+            h: 30,
+            speed: 100 + Math.random() * 100
+        });
+        this.enemySpawnTimer = 0.5;
+    }
+
+    // Update enemies & collisions
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+        let e = this.enemies[i];
+        e.y += e.speed * dt;
+
+        // Player hit
+        if (this.player.x < e.x + e.w && this.player.x + this.player.w > e.x &&
+            this.player.y < e.y + e.h && this.player.y + this.player.h > e.y) {
+            audio.explosion();
+            this.score = 0;
+            this.enemies = [];
+            this.bullets = [];
+            this.spawnParticles(this.player.x, this.player.y, "#f00");
+            break;
+        }
+
+        // Bullet hit
+        let hit = false;
+        for (let j = this.bullets.length - 1; j >= 0; j--) {
+            let b = this.bullets[j];
+            if (b.x < e.x + e.w && b.x + b.w > e.x &&
+                b.y < e.y + e.h && b.y + b.h > e.y) {
+                audio.coin();
+                this.score += 10;
+                this.spawnParticles(e.x + e.w/2, e.y + e.h/2, "#0ff");
+                this.bullets.splice(j, 1);
+                this.enemies.splice(i, 1);
+                hit = true;
+                break;
+            }
+        }
+
+        if (!hit && e.y > this.canvas.height) {
+            this.enemies.splice(i, 1);
+        }
+    }
+
+    // Update particles
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+        let p = this.particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt;
+        if (p.life <= 0) this.particles.splice(i, 1);
+    }
+
+    this.draw();
+  }
+
+  draw() {
+    let ctx = this.ctx;
+    ctx.fillStyle = "#050510";
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Starfield BG
+    ctx.fillStyle = "#fff";
+    for(let i=0; i<50; i++) {
+        let x = (Math.sin(i*123) * 1000 + performance.now()*0.05) % this.canvas.width;
+        let y = (Math.cos(i*321) * 1000 + performance.now()*0.1) % this.canvas.height;
+        if(x<0) x+=this.canvas.width; if(y<0) y+=this.canvas.height;
+        ctx.fillRect(x, y, 2, 2);
+    }
+
+    // Player
+    ctx.fillStyle = "#0ff";
+    ctx.shadowColor = "#0ff";
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(this.player.x + this.player.w/2, this.player.y);
+    ctx.lineTo(this.player.x + this.player.w, this.player.y + this.player.h);
+    ctx.lineTo(this.player.x, this.player.y + this.player.h);
+    ctx.fill();
+
+    // Bullets
+    ctx.fillStyle = "#ff0";
+    ctx.shadowColor = "#ff0";
+    for (let b of this.bullets) ctx.fillRect(b.x, b.y, b.w, b.h);
+
+    // Enemies
+    ctx.fillStyle = "#f00";
+    ctx.shadowColor = "#f00";
+    for (let e of this.enemies) ctx.fillRect(e.x, e.y, e.w, e.h);
+
+    // Particles
+    ctx.shadowBlur = 0;
+    for (let p of this.particles) {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.life * 2;
+        ctx.fillRect(p.x, p.y, 4, 4);
+    }
+    ctx.globalAlpha = 1.0;
+
+    // Score
+    ctx.fillStyle = "#0ff";
+    ctx.font = "24px Courier New";
+    ctx.fillText("SCORE: " + this.score, 20, 40);
+  }
+}
+
+let game = null;
+const canvas = document.getElementById('gameCanvas');
+const mainMenu = document.getElementById('main-menu');
+const btnMenuBack = document.getElementById('btn-menu-back');
+
+function stopCurrentGame() {
+    if (game) {
+        game.stop();
+        game = null;
+    }
+}
+
+function startGame(GameClass) {
+    stopCurrentGame();
+    mainMenu.style.display = 'none';
+    btnMenuBack.style.display = 'block';
+    game = new GameClass(canvas);
+    window.game = game;
+}
+
+document.getElementById('btn-game-cat').addEventListener('click', () => startGame(PlatformerGame));
+document.getElementById('btn-game-race').addEventListener('click', () => startGame(RacingGame));
+document.getElementById('btn-game-shoot').addEventListener('click', () => startGame(ShooterGame));
+
+btnMenuBack.addEventListener('click', () => {
+    stopCurrentGame();
+    mainMenu.style.display = 'flex';
+    btnMenuBack.style.display = 'none';
+    // Clear canvas
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = "#050510";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+});
+
+// Setup audio and visualizer globally
+const radioPlayer = document.getElementById('radio-player');
+const radioStations = document.getElementById('radio-stations');
+const btnRadioPlay = document.getElementById('btn-radio-play');
+const radioVol = document.getElementById('radio-vol');
+const visBars = document.querySelectorAll('.vis-bar');
+const catMeme = document.getElementById('cat-meme');
+
+let audioCtx, analyser, source, dataArray;
+
+function initAudioVisualizer() {
+    if (audioCtx) return;
+    // We must use the global audio manager context to avoid cross-origin issues when possible,
+    // but streams often block CORS anyway. If CORS fails, we fallback to random bars.
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 32;
+        source = audioCtx.createMediaElementSource(radioPlayer);
+        source.connect(analyser);
+        analyser.connect(audioCtx.destination);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+    } catch(e) {
+        console.warn("Audio Context init failed or CORS restricted. Visualizer will use fallback mode.", e);
+    }
+}
+
+radioPlayer.volume = radioVol.value;
+
+btnRadioPlay.addEventListener('click', () => {
+    initAudioVisualizer();
+    if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+
+    if (radioPlayer.paused) {
+        if (!radioPlayer.src || radioPlayer.src === window.location.href) {
+            if (radioStations.value) {
+                radioPlayer.src = radioStations.value;
+            } else {
+                return;
+            }
+        }
+        radioPlayer.play().then(() => {
+            btnRadioPlay.innerText = "⏸ PAUSE";
+            btnRadioPlay.style.borderColor = "#f0f";
+            btnRadioPlay.style.color = "#f0f";
+            btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+            catMeme.style.display = 'block';
+            updateVisualizer();
+        }).catch(e => console.error("Radio play error:", e));
+    } else {
+        radioPlayer.pause();
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+        catMeme.style.display = 'none';
+        visBars.forEach(bar => bar.style.height = '2px');
+    }
+});
+
+radioStations.addEventListener('change', () => {
+    initAudioVisualizer();
+    if (radioStations.value) {
+        radioPlayer.src = radioStations.value;
+        radioPlayer.play().then(() => {
+            btnRadioPlay.innerText = "⏸ PAUSE";
+            btnRadioPlay.style.borderColor = "#f0f";
+            btnRadioPlay.style.color = "#f0f";
+            btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+            catMeme.style.display = 'block';
+            updateVisualizer();
+        }).catch(e => console.error("Radio play error:", e));
+    } else {
+        radioPlayer.pause();
+        radioPlayer.src = "";
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+        catMeme.style.display = 'none';
+        visBars.forEach(bar => bar.style.height = '2px');
+    }
+});
+
+radioVol.addEventListener('input', () => { radioPlayer.volume = radioVol.value; });
+
+function updateVisualizer() {
+    if (radioPlayer.paused) return;
+
+    if (analyser && dataArray) {
+        try {
+            analyser.getByteFrequencyData(dataArray);
+            visBars.forEach((bar, i) => {
+                let v = dataArray[i];
+                // Scale value to height (max 20px)
+                bar.style.height = Math.max(2, (v / 255) * 20) + 'px';
+            });
+        } catch(e) {
+            // CORS fallback
+            visBars.forEach(bar => {
+                bar.style.height = Math.max(2, Math.random() * 20) + 'px';
+            });
+        }
+    } else {
+        // Fallback fake visualizer if context failed completely
+        visBars.forEach(bar => {
+            bar.style.height = Math.max(2, Math.random() * 20) + 'px';
+        });
+    }
+
+    requestAnimationFrame(updateVisualizer);
+}
+
+// Ensure visualizer works correctly on initial load
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = "#050510";
+ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
 
 </script>
 </body>
