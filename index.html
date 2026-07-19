@@ -626,9 +626,23 @@ class Slingshot {
   }
 
   draw(ctx, world) {
-    // Slingshot back
-    ctx.fillStyle = "#5d4037";
-    ctx.fillRect(this.base.x - 10, this.base.y, 20, 100);
+    // Slingshot back wood
+    ctx.fillStyle = "#795548";
+    ctx.fillRect(this.base.x - 12, this.base.y, 24, 120); // main trunk
+    // left fork
+    ctx.save();
+    ctx.translate(this.base.x - 10, this.base.y);
+    ctx.rotate(-0.4);
+    ctx.fillRect(-8, -50, 16, 60);
+    ctx.restore();
+
+    // right fork (back)
+    ctx.fillStyle = "#5D4037"; // darker for depth
+    ctx.save();
+    ctx.translate(this.base.x + 10, this.base.y);
+    ctx.rotate(0.4);
+    ctx.fillRect(-8, -50, 16, 60);
+    ctx.restore();
 
     // Slingshot rubber band back
     if (this.isDragging) {
@@ -654,9 +668,12 @@ class Slingshot {
   }
 
   drawFront(ctx) {
-    // Slingshot front
-    ctx.fillStyle = "#4e342e";
-    ctx.fillRect(this.base.x + 5, this.base.y - 10, 15, 60);
+    // We already drew the forks in draw(), this can just be an extra overlap if needed, or left empty.
+    // Let's just draw the front strap attachment
+    ctx.fillStyle = "#3E2723";
+    ctx.beginPath();
+    ctx.arc(this.base.x - 25, this.base.y - 45, 6, 0, Math.PI*2);
+    ctx.fill();
 
     // Slingshot rubber band front
     if (this.isDragging) {
@@ -1064,7 +1081,7 @@ class Game {
             else if (b.birdType === "black") { this.explode(b.pos, 250, 500000); this.destroyBody(b); this.birdInFlight=null; }
         }
 
-        if (b && (b.vel.lengthSq() < 10 || b.pos.x > 3000 || b.pos.x < -1000 || this.flightTimer > 10)) {
+        if (b && ((this.flightTimer > 1.0 && b.vel.lengthSq() < 5) || b.pos.x > 3000 || b.pos.x < -1000 || this.flightTimer > 10)) {
           // Bird stopped
           this.camera.target = null;
           this.birdInFlight = null;
@@ -1094,20 +1111,47 @@ class Game {
     let ctx = this.ctx;
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-    // Background gradient
-    let grad = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
-    grad.addColorStop(0, "#4facfe");
-    grad.addColorStop(1, "#00f2fe");
-    ctx.fillStyle = grad;
+    // Background gradient (Sky)
+    let skyGrad = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+    skyGrad.addColorStop(0, "#87CEEB"); // Light sky blue
+    skyGrad.addColorStop(1, "#E0F6FF"); // Pale horizon
+    ctx.fillStyle = skyGrad;
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.camera.apply(ctx);
 
+    // Draw clouds (parallax)
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    for (let i = -1; i < 5; i++) {
+        let cx = i * 800 + (this.camera.x * 0.2) % 800; // simple parallax
+        ctx.beginPath();
+        ctx.arc(cx + 200, 150, 60, 0, Math.PI * 2);
+        ctx.arc(cx + 250, 120, 70, 0, Math.PI * 2);
+        ctx.arc(cx + 300, 150, 60, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Draw background hills (parallax)
+    ctx.fillStyle = "#81C784";
+    ctx.beginPath();
+    for (let i = -1000; i < 3000; i += 100) {
+        let h = Math.sin(i * 0.005) * 100 + 450;
+        ctx.lineTo(i + (this.camera.x * 0.5) % 1000, h);
+    }
+    ctx.lineTo(3000, this.groundY);
+    ctx.lineTo(-1000, this.groundY);
+    ctx.fill();
+
     // Draw ground
-    ctx.fillStyle = "#2e7d32";
+    let groundGrad = ctx.createLinearGradient(0, this.groundY, 0, this.groundY + 200);
+    groundGrad.addColorStop(0, "#4CAF50");
+    groundGrad.addColorStop(1, "#2E7D32");
+    ctx.fillStyle = groundGrad;
     ctx.fillRect(-1000, this.groundY, 4000, 500);
-    ctx.fillStyle = "#1b5e20";
-    ctx.fillRect(-1000, this.groundY + 20, 4000, 480);
+
+    // Ground texture (darker top edge)
+    ctx.fillStyle = "#388E3C";
+    ctx.fillRect(-1000, this.groundY, 4000, 15);
 
     this.slingshot.draw(ctx, this.world);
 
