@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cyberpunk Cat Platformer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23050510'/><path d='M20 80 L20 40 L40 60 L60 60 L80 40 L80 80 Z' fill='%230ff' stroke='%23f0f' stroke-width='5'/></svg>">
+<style>
+  body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050510; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #score-container { position: absolute; top: 20px; left: 20px; font-size: 24px; color: #0ff; text-shadow: 0 0 10px #0ff; font-weight: bold; }
+  #lives-container { position: absolute; top: 50px; left: 20px; font-size: 24px; color: #f0f; text-shadow: 0 0 10px #f0f; font-weight: bold; }
+  #msg-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 48px; color: #ff0; text-shadow: 0 0 20px #ff0; display: none; text-align: center; }
+
+  .btn { pointer-events: auto; background: rgba(0, 255, 255, 0.1); border: 2px solid #0ff; border-radius: 10px; padding: 10px 20px; color: #0ff; text-shadow: 0 0 5px #0ff; box-shadow: 0 0 10px #0ff; cursor: pointer; font-size: 20px; font-weight: bold; display: inline-block; margin-top: 20px; transition: all 0.2s; }
+  .btn:hover { background: rgba(0, 255, 255, 0.3); }
+  .btn:active { transform: scale(0.95); }
+
+  #controls { position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; pointer-events: none; }
+  .dpad { display: flex; gap: 10px; }
+  .c-btn { pointer-events: auto; width: 60px; height: 60px; background: rgba(255, 0, 255, 0.2); border: 2px solid #f0f; border-radius: 50%; color: #f0f; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 0 10px #f0f; }
+  .c-btn:active { background: rgba(255, 0, 255, 0.5); }
+
+  @media (min-width: 800px) { #controls { display: none; } }
+
+  #radio-container { position: absolute; top: 20px; right: 20px; background: rgba(5,5,16,0.8); border: 2px solid #f0f; border-radius: 10px; padding: 10px; box-shadow: 0 0 15px #f0f; pointer-events: auto; display: flex; flex-direction: column; gap: 5px; z-index: 100; backdrop-filter: blur(5px); }
+  #radio-header { color: #f0f; font-size: 16px; font-weight: bold; text-align: center; text-shadow: 0 0 5px #f0f; margin-bottom: 5px; letter-spacing: 1px; }
+  #radio-stations { background: #000; color: #0ff; border: 1px solid #0ff; padding: 5px; font-family: 'Courier New', Courier, monospace; outline: none; cursor: pointer; }
+  #radio-controls { display: flex; gap: 10px; align-items: center; margin-top: 5px; }
+  #radio-vol { width: 80px; accent-color: #f0f; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<div id="ui">
+  <div id="score-container">DATA: <span id="score">0</span></div>
+  <div id="lives-container">LIVES: <span id="lives">3</span></div>
+  <div id="msg-container">
+    <div id="msg-text">NIVEL COMPLETADO</div>
+    <div id="btn-restart" class="btn">REINICIAR SISTEMA</div>
+  </div>
+
+
+  <div id="radio-container">
+    <div id="radio-header">📻 CYBER-FLOW RADIO</div>
+    <select id="radio-stations">
+      <option value="">[ SISTEMA OFFLINE ]</option>
+      <option value="https://streams.ilovemusic.de/iloveradio109.mp3">Cyberpunk / Synthwave</option>
+      <option value="https://streams.ilovemusic.de/iloveradio14.mp3">Latino Flow / Urban</option>
+      <option value="https://streams.ilovemusic.de/iloveradio17.mp3">Lofi Chill (Hacking...)</option>
+      <option value="http://icecast.vrtcdn.be/mnm-hits.mp3">MNM Hits (Mundo)</option>
+      <option value="https://streams.ilovemusic.de/iloveradio1.mp3">Top 40 / Pop</option>
+    </select>
+    <div id="radio-controls">
+      <button id="btn-radio-play" class="btn" style="padding: 5px 10px; font-size: 14px; margin-top: 0; box-shadow: 0 0 5px #0ff;">▶ PLAY</button>
+      <input type="range" id="radio-vol" min="0" max="1" step="0.05" value="0.3" title="Volumen">
+    </div>
+    <audio id="radio-player" style="display:none;" volume="0.3"></audio>
+  </div>
+
+  <div id="controls">
+    <div class="dpad">
+      <div id="btn-left" class="c-btn">◄</div>
+      <div id="btn-right" class="c-btn">►</div>
+    </div>
+    <div id="btn-jump" class="c-btn" style="border-color:#0ff; color:#0ff; box-shadow:0 0 10px #0ff; background:rgba(0,255,255,0.2);">▲</div>
+  </div>
+</div>
+
+<script>
+// --- AUDIO (WEB AUDIO API) ---
+class AudioManager {
+  constructor() {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  playTone(freq, type, duration, vol, slideFreq = null) {
+    if(this.ctx.state === 'suspended') this.ctx.resume();
+    let osc = this.ctx.createOscillator();
+    let gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+    if (slideFreq) {
+      osc.frequency.exponentialRampToValueAtTime(slideFreq, this.ctx.currentTime + duration);
+    }
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration);
+  }
+  playNoise(duration, vol) {
+    if(this.ctx.state === 'suspended') this.ctx.resume();
+    let bufferSize = this.ctx.sampleRate * duration;
+    let buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    let data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    let noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    // Cyberpunk filter
+    let filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1000;
+
+    let gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start();
+  }
+
+  jump() { this.playTone(150, 'square', 0.2, 0.1, 600); }
+  coin() { this.playTone(800, 'sine', 0.1, 0.1, 1200); setTimeout(() => this.playTone(1200, 'sine', 0.1, 0.1, 1600), 100); }
+  stomp() { this.playNoise(0.15, 0.3); this.playTone(100, 'sawtooth', 0.15, 0.2, 50); }
+  die() { this.playTone(300, 'sawtooth', 0.5, 0.3, 50); this.playNoise(0.5, 0.3); }
+  win() {
+    this.playTone(400, 'square', 0.2, 0.1);
+    setTimeout(() => this.playTone(500, 'square', 0.2, 0.1), 200);
+    setTimeout(() => this.playTone(600, 'square', 0.4, 0.1), 400);
+  }
+}
+const audio = new AudioManager();
+
+// --- PHYSICS & MATH ---
+class Rect {
+  constructor(x, y, w, h) { this.x = x; this.y = y; this.w = w; this.h = h; }
+  get left() { return this.x; }
+  get right() { return this.x + this.w; }
+  get top() { return this.y; }
+  get bottom() { return this.y + this.h; }
+  overlaps(other) {
+    return this.left < other.right && this.right > other.left &&
+           this.top < other.bottom && this.bottom > other.top;
+  }
+}
+
+// --- ENTITIES ---
+class Entity extends Rect {
+  constructor(x, y, w, h) {
+    super(x, y, w, h);
+    this.vx = 0; this.vy = 0;
+    this.dead = false;
+    this.facingRight = true;
+  }
+}
+
+class Player extends Entity {
+  constructor(x, y) {
+    super(x, y, 24, 24); // Hitbox
+    this.speed = 300;
+    this.jumpForce = -600;
+    this.grounded = false;
+    this.state = 'idle'; // idle, run, jump
+    this.animTimer = 0;
+  }
+
+  update(dt, input, level) {
+    // X Movement
+    if (input.left) { this.vx = -this.speed; this.facingRight = false; this.state = 'run'; }
+    else if (input.right) { this.vx = this.speed; this.facingRight = true; this.state = 'run'; }
+    else { this.vx = 0; this.state = 'idle'; }
+
+    this.x += this.vx * dt;
+    this.handleCollisions(level, true); // Resolve X
+
+    // Y Movement & Gravity
+    if (input.jump && this.grounded) {
+      this.vy = this.jumpForce;
+      this.grounded = false;
+      audio.jump();
+    }
+
+    this.vy += 1200 * dt; // Gravity
+    if (this.vy > 1000) this.vy = 1000; // Terminal velocity
+    if (!this.grounded) this.state = 'jump';
+
+    this.y += this.vy * dt;
+    this.grounded = false;
+    this.handleCollisions(level, false); // Resolve Y
+
+    // Bounds
+    if (this.x < 0) this.x = 0;
+    if (this.y > level.height * level.tileSize + 100) this.die();
+
+    this.animTimer += dt;
+  }
+
+  handleCollisions(level, isX) {
+    let tiles = level.getTilesByRect(this);
+    for (let t of tiles) {
+      if (t.type === 1) { // Solid block
+        if (this.overlaps(t)) {
+          if (isX) {
+            if (this.vx > 0) this.x = t.left - this.w;
+            else if (this.vx < 0) this.x = t.right;
+            this.vx = 0;
+          } else {
+            if (this.vy > 0) { this.y = t.top - this.h; this.grounded = true; }
+            else if (this.vy < 0) this.y = t.bottom;
+            this.vy = 0;
+          }
+        }
+      }
+    }
+  }
+
+  die() {
+    this.dead = true;
+    audio.die();
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x + this.w/2, this.y + this.h);
+    if (!this.facingRight) ctx.scale(-1, 1);
+
+    // Cyberpunk Cat Drawing
+    let bounce = 0;
+    if (this.state === 'run') bounce = Math.abs(Math.sin(this.animTimer * 15)) * 4;
+
+    // Glow effect
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#0ff";
+
+    // Body
+    ctx.fillStyle = "#222";
+    ctx.fillRect(-12, -20 - bounce, 24, 16);
+    // Neon stripes on body
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(-8, -18 - bounce, 16, 2);
+    ctx.fillRect(-8, -12 - bounce, 16, 2);
+
+    // Head
+    ctx.fillStyle = "#222";
+    ctx.fillRect(-10, -32 - bounce, 20, 16);
+
+    // Ears
+    ctx.beginPath();
+    ctx.moveTo(-10, -32 - bounce); ctx.lineTo(-14, -42 - bounce); ctx.lineTo(-2, -32 - bounce);
+    ctx.moveTo(10, -32 - bounce); ctx.lineTo(14, -42 - bounce); ctx.lineTo(2, -32 - bounce);
+    ctx.fillStyle = "#222"; ctx.fill();
+
+    // Neon Ear inners
+    ctx.beginPath();
+    ctx.moveTo(-9, -32 - bounce); ctx.lineTo(-12, -39 - bounce); ctx.lineTo(-4, -32 - bounce);
+    ctx.moveTo(9, -32 - bounce); ctx.lineTo(12, -39 - bounce); ctx.lineTo(4, -32 - bounce);
+    ctx.fillStyle = "#f0f"; ctx.fill();
+
+    // Eyes (Cyber optic)
+    ctx.shadowColor = "#f0f";
+    ctx.fillStyle = "#f0f";
+    ctx.fillRect(2, -28 - bounce, 6, 4); // Right robotic eye
+    ctx.fillStyle = "#0ff";
+    ctx.shadowColor = "#0ff";
+    ctx.fillRect(-6, -28 - bounce, 4, 4); // Left normal cyber eye
+
+    // Tail
+    ctx.shadowBlur = 5;
+    ctx.strokeStyle = "#0ff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-12, -10 - bounce);
+    let tailAngle = this.state === 'run' ? Math.sin(this.animTimer * 10) * 0.5 : Math.sin(this.animTimer * 2) * 0.2;
+    ctx.quadraticCurveTo(-20 + tailAngle*10, -15, -22 + tailAngle*15, -25);
+    ctx.stroke();
+
+    // Legs
+    ctx.fillStyle = "#0ff";
+    ctx.shadowBlur = 0;
+    if (this.state === 'idle') {
+      ctx.fillRect(-10, -4, 4, 4); ctx.fillRect(-4, -4, 4, 4); // front
+      ctx.fillRect(2, -4, 4, 4); ctx.fillRect(8, -4, 4, 4);  // back
+    } else if (this.state === 'run') {
+      let runCycle = Math.sin(this.animTimer * 15);
+      ctx.fillRect(-10 + runCycle*4, -4 - (runCycle>0?runCycle*4:0), 4, 4);
+      ctx.fillRect(-4 - runCycle*4, -4 - (runCycle<0?-runCycle*4:0), 4, 4);
+    } else if (this.state === 'jump') {
+      ctx.fillRect(-12, -8, 4, 4); ctx.fillRect(-6, -6, 4, 4);
+      ctx.fillRect(4, -6, 4, 4); ctx.fillRect(10, -8, 4, 4);
+    }
+
+    ctx.restore();
+  }
+}
+
+class Drone extends Entity {
+  constructor(x, y) {
+    super(x, y, 32, 24);
+    this.vx = -100;
+    this.startX = x;
+    this.animTimer = 0;
+  }
+  update(dt, level) {
+    this.animTimer += dt;
+    this.vy += 1500 * dt;
+
+    this.x += this.vx * dt;
+    let hitWall = false;
+
+    let tiles = level.getTilesByRect(this);
+    for (let t of tiles) {
+      if (t.type === 1) {
+        if (this.overlaps(t)) {
+          if (this.vx > 0) { this.x = t.left - this.w; hitWall = true; }
+          else if (this.vx < 0) { this.x = t.right; hitWall = true; }
+        }
+      }
+    }
+
+    this.y += this.vy * dt;
+    for (let t of level.getTilesByRect(this)) {
+       if (t.type === 1 && this.overlaps(t)) {
+           if (this.vy > 0) this.y = t.top - this.h;
+           this.vy = 0;
+       }
+    }
+
+    // Edge detection (turn around if about to fall)
+    let edgeCheckX = this.vx > 0 ? this.right + 5 : this.left - 5;
+    let edgeTile = level.getTileAt(edgeCheckX, this.bottom + 5);
+    if (!edgeTile || edgeTile.type === 0) {
+        hitWall = true;
+    }
+
+    if (hitWall) {
+      this.vx *= -1;
+      this.facingRight = !this.facingRight;
+    }
+  }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x + this.w/2, this.y + this.h/2);
+    let floatY = Math.sin(this.animTimer * 5) * 4;
+    ctx.translate(0, floatY);
+    if (!this.facingRight) ctx.scale(-1, 1);
+
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#f00";
+
+    // Body
+    ctx.fillStyle = "#333";
+    ctx.fillRect(-16, -12, 32, 24);
+    ctx.fillStyle = "#555";
+    ctx.fillRect(-12, -8, 24, 16);
+
+    // Eye
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(-8, -4, 8, 8);
+
+    // Antenna
+    ctx.strokeStyle = "#f00";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(10, -20); ctx.stroke();
+
+    // Hover thrusters
+    ctx.fillStyle = "#0ff";
+    ctx.shadowColor = "#0ff";
+    ctx.globalAlpha = 0.5 + Math.random()*0.5;
+    ctx.fillRect(-12, 12, 8, 6 + Math.random()*4);
+    ctx.fillRect(4, 12, 8, 6 + Math.random()*4);
+    ctx.globalAlpha = 1.0;
+
+    ctx.restore();
+  }
+}
+
+class DataChip extends Entity {
+  constructor(x, y) {
+    super(x + 8, y + 8, 16, 16); // Center in tile
+    this.animTimer = Math.random() * 10;
+    this.collected = false;
+  }
+  update(dt) { this.animTimer += dt; }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x + this.w/2, this.y + this.h/2);
+    ctx.rotate(this.animTimer * 2);
+
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#ff0";
+    ctx.strokeStyle = "#ff0";
+    ctx.lineWidth = 3;
+    ctx.fillStyle = "rgba(255,255,0,0.3)";
+
+    ctx.beginPath();
+    ctx.moveTo(0, -10); ctx.lineTo(10, 0); ctx.lineTo(0, 10); ctx.lineTo(-10, 0);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Inner circuit
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-2, -2, 4, 4);
+
+    ctx.restore();
+  }
+}
+
+class Goal extends Entity {
+  constructor(x, y) {
+    super(x, y - 32, 64, 64);
+    this.animTimer = 0;
+  }
+  update(dt) { this.animTimer += dt; }
+  draw(ctx) {
+    ctx.save();
+    ctx.translate(this.x + this.w/2, this.y + this.h);
+
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#0ff";
+
+    // Base
+    ctx.fillStyle = "#222";
+    ctx.fillRect(-32, -10, 64, 10);
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(-28, -8, 56, 2);
+
+    // Hologram projection
+    ctx.globalAlpha = 0.5 + Math.sin(this.animTimer * 10) * 0.2;
+    let grad = ctx.createLinearGradient(0, -10, 0, -64);
+    grad.addColorStop(0, "rgba(0, 255, 255, 0.8)");
+    grad.addColorStop(1, "rgba(0, 255, 255, 0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(-20, -10); ctx.lineTo(20, -10); ctx.lineTo(32, -64); ctx.lineTo(-32, -64);
+    ctx.fill();
+
+    // Floating text
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 16px Courier";
+    ctx.textAlign = "center";
+    ctx.fillText("UPLINK", 0, -40 + Math.sin(this.animTimer*3)*5);
+
+    ctx.restore();
+  }
+}
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y;
+    this.vx = (Math.random() - 0.5) * 200;
+    this.vy = (Math.random() - 1) * 200;
+    this.life = 1.0;
+    this.color = color;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vy += 500 * dt; // gravity
+    this.life -= dt * 2;
+  }
+  draw(ctx) {
+    ctx.globalAlpha = Math.max(0, this.life);
+    ctx.fillStyle = this.color;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = this.color;
+    ctx.fillRect(this.x, this.y, 4, 4);
+    ctx.globalAlpha = 1.0;
+    ctx.shadowBlur = 0;
+  }
+}
+
+// --- LEVEL ---
+class Level {
+  constructor() {
+    this.tileSize = 32;
+    this.map = [
+      "................................................................................",
+      "................................................................................",
+      "................................................................................",
+      "................................................................................",
+      "................................................................................",
+      "................................C.C.C...........................................",
+      "...............................#######..........................................",
+      "................................................................................",
+      "....................C.......E.............C.....................................",
+      "..................#####...#####........#######..................................",
+      "..................................................E.............................",
+      ".........C......................................#####...........................",
+      "........###..........................#####....................C..C..C........G..",
+      "...................E.........................................##########.....####",
+      "P...............#######.........C........................#......................",
+      "#######...####............###..###....##.....####........#......................",
+      "#######...####............###..###....##.....####........#......................"
+    ];
+    this.height = this.map.length;
+    this.width = this.map[0].length;
+
+    this.playerStart = {x: 50, y: 50};
+    this.enemies = [];
+    this.items = [];
+    this.goal = null;
+
+    this.parseMap();
+  }
+
+  parseMap() {
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        let char = this.map[y][x];
+        let px = x * this.tileSize;
+        let py = y * this.tileSize;
+
+        if (char === 'P') { this.playerStart = {x: px, y: py}; }
+        else if (char === 'E') { this.enemies.push(new Drone(px, py)); }
+        else if (char === 'C') { this.items.push(new DataChip(px, py)); }
+        else if (char === 'G') { this.goal = new Goal(px, py); }
+      }
+    }
+  }
+
+  getTileAt(px, py) {
+    let tx = Math.floor(px / this.tileSize);
+    let ty = Math.floor(py / this.tileSize);
+    if (tx < 0 || tx >= this.width || ty < 0 || ty >= this.height) return null;
+    let char = this.map[ty][tx];
+    return {
+      x: tx, y: ty,
+      left: tx * this.tileSize, right: (tx+1) * this.tileSize,
+      top: ty * this.tileSize, bottom: (ty+1) * this.tileSize,
+      type: char === '#' ? 1 : 0
+    };
+  }
+
+  getTilesByRect(rect) {
+    let tiles = [];
+    let startX = Math.floor(rect.left / this.tileSize);
+    let endX = Math.floor(rect.right / this.tileSize);
+    let startY = Math.floor(rect.top / this.tileSize);
+    let endY = Math.floor(rect.bottom / this.tileSize);
+
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        if (x >= 0 && x < this.width && y >= 0 && y < this.height) {
+          let char = this.map[y][x];
+          if (char === '#') {
+            tiles.push({
+              left: x * this.tileSize, right: (x+1) * this.tileSize,
+              top: y * this.tileSize, bottom: (y+1) * this.tileSize,
+              type: 1
+            });
+          }
+        }
+      }
+    }
+    return tiles;
+  }
+
+  draw(ctx, camX, camY, canvasWidth, canvasHeight) {
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = "#f0f";
+
+    let startX = Math.max(0, Math.floor(camX / this.tileSize));
+    let endX = Math.min(this.width, Math.ceil((camX + canvasWidth) / this.tileSize));
+    let startY = Math.max(0, Math.floor(camY / this.tileSize));
+    let endY = Math.min(this.height, Math.ceil((camY + canvasHeight) / this.tileSize));
+
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        if (this.map[y][x] === '#') {
+          let px = x * this.tileSize;
+          let py = y * this.tileSize;
+
+          // Cyberpunk crate/tile
+          ctx.fillStyle = "#111";
+          ctx.fillRect(px, py, this.tileSize, this.tileSize);
+
+          ctx.strokeStyle = "#f0f";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(px + 1, py + 1, this.tileSize - 2, this.tileSize - 2);
+
+          // Inner detail
+          ctx.fillStyle = "#333";
+          ctx.fillRect(px + 6, py + 6, this.tileSize - 12, this.tileSize - 12);
+
+          // Corner neon dots
+          ctx.fillStyle = "#0ff";
+          ctx.fillRect(px+3, py+3, 3, 3);
+          ctx.fillRect(px+this.tileSize-6, py+3, 3, 3);
+          ctx.fillRect(px+3, py+this.tileSize-6, 3, 3);
+          ctx.fillRect(px+this.tileSize-6, py+this.tileSize-6, 3, 3);
+        }
+      }
+    }
+    ctx.shadowBlur = 0;
+  }
+}
+
+// --- GAME LOGIC ---
+class Game {
+  constructor() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+
+    this.input = { left: false, right: false, jump: false };
+    this.setupInput();
+
+    this.score = 0;
+    this.lives = 3;
+    this.state = 'PLAY'; // PLAY, DEAD, WIN
+    this.particles = [];
+
+    this.initLevel();
+
+    window.addEventListener('resize', () => this.resize());
+    this.resize();
+
+    this.lastTime = performance.now();
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  resize() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+  }
+
+  initLevel() {
+    this.level = new Level();
+    this.player = new Player(this.level.playerStart.x, this.level.playerStart.y);
+    this.camera = { x: 0, y: 0 };
+    this.state = 'PLAY';
+    document.getElementById('msg-container').style.display = 'none';
+  }
+
+  setupInput() {
+    const setKey = (code, val) => {
+      if (code === 'ArrowLeft' || code === 'KeyA') this.input.left = val;
+      if (code === 'ArrowRight' || code === 'KeyD') this.input.right = val;
+      if (code === 'ArrowUp' || code === 'KeyW' || code === 'Space') {
+          this.input.jump = val;
+          if(val && this.ctx && audio.ctx.state === 'suspended') audio.ctx.resume(); // unlock audio
+      }
+    };
+    window.addEventListener('keydown', e => setKey(e.code, true));
+    window.addEventListener('keyup', e => setKey(e.code, false));
+
+
+    // --- CYBER-FLOW RADIO ---
+    const radioPlayer = document.getElementById('radio-player');
+    const radioStations = document.getElementById('radio-stations');
+    const btnRadioPlay = document.getElementById('btn-radio-play');
+    const radioVol = document.getElementById('radio-vol');
+
+    radioPlayer.volume = radioVol.value;
+
+    btnRadioPlay.addEventListener('click', () => {
+      if (radioPlayer.paused) {
+        if (!radioPlayer.src || radioPlayer.src === window.location.href) {
+          if (radioStations.value) {
+            radioPlayer.src = radioStations.value;
+          } else {
+            return; // No station selected
+          }
+        }
+        radioPlayer.play().catch(e => console.error("Radio play error:", e));
+        btnRadioPlay.innerText = "⏸ PAUSE";
+        btnRadioPlay.style.borderColor = "#f0f";
+        btnRadioPlay.style.color = "#f0f";
+        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+      } else {
+        radioPlayer.pause();
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+      }
+    });
+
+    radioStations.addEventListener('change', () => {
+      if (radioStations.value) {
+        radioPlayer.src = radioStations.value;
+        radioPlayer.play().catch(e => console.error("Radio play error:", e));
+        btnRadioPlay.innerText = "⏸ PAUSE";
+        btnRadioPlay.style.borderColor = "#f0f";
+        btnRadioPlay.style.color = "#f0f";
+        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+      } else {
+        radioPlayer.pause();
+        radioPlayer.src = "";
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+      }
+    });
+
+    radioVol.addEventListener('input', () => {
+      radioPlayer.volume = radioVol.value;
+    });
+
+    // Touch UI
+
+    const addTouch = (id, prop) => {
+      let el = document.getElementById(id);
+      el.addEventListener('touchstart', e => { e.preventDefault(); this.input[prop] = true; audio.ctx.resume(); });
+      el.addEventListener('touchend', e => { e.preventDefault(); this.input[prop] = false; });
+    };
+    addTouch('btn-left', 'left');
+    addTouch('btn-right', 'right');
+    addTouch('btn-jump', 'jump');
+
+    document.getElementById('btn-restart').addEventListener('click', () => {
+      if (this.lives <= 0) { this.lives = 3; this.score = 0; }
+      this.initLevel();
+      this.updateUI();
+    });
+  }
+
+  spawnParticles(x, y, color, count=10) {
+    for(let i=0; i<count; i++) this.particles.push(new Particle(x, y, color));
+  }
+
+  updateUI() {
+    document.getElementById('score').innerText = this.score;
+    document.getElementById('lives').innerText = this.lives;
+  }
+
+  showMsg(text, color) {
+    let msg = document.getElementById('msg-container');
+    msg.style.display = 'block';
+    let textEl = document.getElementById('msg-text');
+    textEl.innerText = text;
+    textEl.style.color = color;
+    textEl.style.textShadow = `0 0 20px ${color}`;
+  }
+
+  loop(time) {
+    requestAnimationFrame((t) => this.loop(t));
+    let dt = (time - this.lastTime) / 1000;
+    this.lastTime = time;
+    if (dt > 0.1) dt = 0.1;
+
+    if (this.state === 'PLAY') {
+      this.player.update(dt, this.input, this.level);
+
+      if (this.player.dead) {
+        this.lives--;
+        this.updateUI();
+        this.spawnParticles(this.player.x + this.player.w/2, this.player.y + this.player.h/2, "#0ff", 30);
+        if (this.lives > 0) {
+            this.state = 'DEAD';
+            setTimeout(() => this.initLevel(), 1500);
+        } else {
+            this.state = 'GAMEOVER';
+            this.showMsg("SISTEMA CRITICO: FIN DEL JUEGO", "#f00");
+        }
+      }
+
+      // Update Enemies
+      for (let i = this.level.enemies.length - 1; i >= 0; i--) {
+        let enemy = this.level.enemies[i];
+        enemy.update(dt, this.level);
+
+        if (this.player.overlaps(enemy)) {
+          // Check stomp (player falling and above enemy center)
+          if (this.player.vy > 0 && this.player.bottom < enemy.bottom - 10) {
+            this.player.vy = this.player.jumpForce * 0.8; // Bounce
+            audio.stomp();
+            this.spawnParticles(enemy.x + enemy.w/2, enemy.y + enemy.h/2, "#f00", 20);
+            this.level.enemies.splice(i, 1);
+            this.score += 100;
+            this.updateUI();
+          } else {
+            this.player.die();
+          }
+        }
+      }
+
+      // Update Items
+      for (let i = this.level.items.length - 1; i >= 0; i--) {
+        let item = this.level.items[i];
+        item.update(dt);
+        if (this.player.overlaps(item)) {
+          audio.coin();
+          this.spawnParticles(item.x + item.w/2, item.y + item.h/2, "#ff0", 15);
+          this.level.items.splice(i, 1);
+          this.score += 50;
+          this.updateUI();
+        }
+      }
+
+      // Goal
+      if (this.level.goal) {
+          this.level.goal.update(dt);
+          if (this.player.overlaps(this.level.goal)) {
+              this.state = 'WIN';
+              audio.win();
+              this.showMsg("UPLINK COMPLETADO", "#0ff");
+          }
+      }
+
+      // Particles
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+          this.particles[i].update(dt);
+          if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+      }
+
+      // Camera logic (smooth follow)
+      let targetX = this.player.x + this.player.w/2 - this.canvas.width/2;
+      let targetY = this.player.y + this.player.h/2 - this.canvas.height*0.6;
+
+      // Clamp camera
+      targetX = Math.max(0, Math.min(targetX, this.level.width * this.level.tileSize - this.canvas.width));
+
+      this.camera.x += (targetX - this.camera.x) * 5 * dt;
+      this.camera.y += (targetY - this.camera.y) * 5 * dt;
+    } else {
+      // Keep updating particles if dead
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+          this.particles[i].update(dt);
+          if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+      }
+    }
+
+    this.draw();
+  }
+
+  draw() {
+    let ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // BG Gradient
+    let bgGrad = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+    bgGrad.addColorStop(0, "#050510");
+    bgGrad.addColorStop(1, "#1a0b2e");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Parallax background (Cyberpunk City)
+    ctx.save();
+
+    // Far buildings
+    ctx.fillStyle = "#0f1525";
+    for(let i=0; i<20; i++) {
+        let bx = (i * 150 - this.camera.x * 0.1) % (20*150);
+        if(bx < -150) bx += 20*150;
+        let bh = 200 + Math.sin(i*123) * 100;
+        ctx.fillRect(bx, this.canvas.height - bh, 120, bh);
+        // tiny windows
+        ctx.fillStyle = "#0ff";
+        ctx.globalAlpha = 0.2;
+        if(i%2===0) ctx.fillRect(bx+20, this.canvas.height - bh + 20, 10, 10);
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = "#0f1525";
+    }
+
+    // Mid buildings
+    ctx.fillStyle = "#1a0f2e";
+    for(let i=0; i<30; i++) {
+        let bx = (i * 100 - this.camera.x * 0.3) % (30*100);
+        if(bx < -100) bx += 30*100;
+        let bh = 100 + Math.sin(i*321) * 200;
+        ctx.fillRect(bx, this.canvas.height - bh, 80, bh);
+        // neon accents
+        ctx.fillStyle = (i%3===0) ? "#f0f" : "#0ff";
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(bx, this.canvas.height - bh, 80, 2);
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle = "#1a0f2e";
+    }
+
+    // Grid floor in BG
+    ctx.strokeStyle = "rgba(0, 255, 255, 0.2)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0; i<this.canvas.width; i+=40) {
+        let lx = (i - this.camera.x * 0.5) % 40;
+        for(let j=0; j<this.canvas.width; j+=40) {
+           ctx.moveTo(j+lx, this.canvas.height-100);
+           ctx.lineTo(j+lx-50, this.canvas.height);
+        }
+    }
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Apply Camera
+    ctx.save();
+    ctx.translate(-Math.floor(this.camera.x), -Math.floor(this.camera.y));
+
+    this.level.draw(ctx, this.camera.x, this.camera.y, this.canvas.width, this.canvas.height);
+
+    if (this.level.goal) this.level.goal.draw(ctx);
+    for (let item of this.level.items) item.draw(ctx);
+    for (let enemy of this.level.enemies) enemy.draw(ctx);
+    if (this.state !== 'DEAD' && this.state !== 'GAMEOVER') this.player.draw(ctx);
+    for (let p of this.particles) p.draw(ctx);
+
+    ctx.restore();
+
+    // CRT Scanline effect overlay
+    ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+    for(let i=0; i<this.canvas.height; i+=4) {
+        ctx.fillRect(0, i, this.canvas.width, 1);
+    }
+  }
+}
+
+// Init
+let game;
+window.onload = () => { game = new Game(); };
+
+</script>
+</body>
+</html>
