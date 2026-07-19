@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Slingshot Physics Puzzle</title>
+<style>
+  body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #87CEEB; font-family: 'Arial Black', sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  .btn { pointer-events: auto; background: rgba(255,255,255,0.8); border: 3px solid #333; border-radius: 50%; width: 50px; height: 50px; margin: 10px; cursor: pointer; font-size: 20px; font-weight: bold; display: flex; align-items: center; justify-content: center; box-shadow: 2px 2px 5px rgba(0,0,0,0.3); transition: transform 0.1s; }
+  .btn:active { transform: scale(0.9); }
+  #top-left { position: absolute; top: 10px; left: 10px; display: flex; gap: 5px; }
+  #score-container { position: absolute; top: 20px; right: 20px; font-size: 32px; color: white; -webkit-text-stroke: 2px #333; text-shadow: 2px 2px 0 #000; }
+  #birds-bar { position: absolute; top: 80px; left: 20px; display: flex; gap: 10px; background: rgba(255,255,255,0.4); padding: 10px; border-radius: 20px; border: 2px solid #333; }
+  .bird-icon { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #000; }
+  #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: none; flex-direction: column; align-items: center; justify-content: center; pointer-events: auto; z-index: 10; }
+  #overlay-title { font-size: 64px; color: white; -webkit-text-stroke: 3px #000; margin-bottom: 20px; text-shadow: 4px 4px 0 #000; text-align: center;}
+  #overlay-stars { font-size: 48px; color: gold; margin-bottom: 20px; text-shadow: 2px 2px 0 #000; }
+  .overlay-btn { background: #4CAF50; color: white; padding: 15px 30px; font-size: 24px; border: 4px solid #fff; border-radius: 10px; cursor: pointer; margin: 10px; box-shadow: 3px 3px 0 #000; text-transform: uppercase; }
+  .overlay-btn:hover { background: #45a049; }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+<div id="ui">
+  <div id="top-left">
+    <div id="btn-pause" class="btn" title="Pausa">⏸</div>
+    <div id="btn-restart" class="btn" title="Reiniciar">↻</div>
+    <div id="btn-sound" class="btn" title="Sonido">🔊</div>
+    <div id="btn-auto" class="btn" title="Auto-Play" style="font-size:12px;">AUTO</div>
+  </div>
+  <div id="score-container">Score: <span id="score">0</span></div>
+  <div id="birds-bar"></div>
+</div>
+
+<div id="overlay">
+  <div id="overlay-title">VICTORIA!</div>
+  <div id="overlay-stars">★★★</div>
+  <div>
+    <button id="btn-next" class="overlay-btn" style="display:none;">Siguiente</button>
+    <button id="btn-retry" class="overlay-btn">Reintentar</button>
+  </div>
+</div>
+
+<script>
+// --- MATH & UTILS ---
+class Vec2 {
+  constructor(x=0, y=0) { this.x = x; this.y = y; }
+  set(x, y) { this.x = x; this.y = y; return this; }
+  copy(v) { this.x = v.x; this.y = v.y; return this; }
+  clone() { return new Vec2(this.x, this.y); }
+  add(v) { return new Vec2(this.x + v.x, this.y + v.y); }
+  addSelf(v) { this.x += v.x; this.y += v.y; return this; }
+  sub(v) { return new Vec2(this.x - v.x, this.y - v.y); }
+  subSelf(v) { this.x -= v.x; this.y -= v.y; return this; }
+  mult(s) { return new Vec2(this.x * s, this.y * s); }
+  multSelf(s) { this.x *= s; this.y *= s; return this; }
+  dot(v) { return this.x * v.x + this.y * v.y; }
+  cross(v) { return this.x * v.y - this.y * v.x; }
+  crossScalar(s) { return new Vec2(s * this.y, -s * this.x); }
+  lengthSq() { return this.x * this.x + this.y * this.y; }
+  length() { return Math.sqrt(this.lengthSq()); }
+  normalize() { let len = this.length(); if (len > 0) { this.x /= len; this.y /= len; } return this; }
+  distSq(v) { let dx = this.x - v.x, dy = this.y - v.y; return dx * dx + dy * dy; }
+  dist(v) { return Math.sqrt(this.distSq(v)); }
+  perp() { return new Vec2(-this.y, this.x); }
+}
+
+function crossScalarVec(s, v) { return new Vec2(-s * v.y, s * v.x); }
+function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+function random(min, max) { return Math.random() * (max - min) + min; }
+
+class Mat22 {
+  constructor(angle) {
+    let c = Math.cos(angle), s = Math.sin(angle);
+    this.col1 = new Vec2(c, s);
+    this.col2 = new Vec2(-s, c);
+  }
+  mul(v) { return new Vec2(this.col1.x * v.x + this.col2.x * v.y, this.col1.y * v.x + this.col2.y * v.y); }
+  mulT(v) { return new Vec2(v.dot(this.col1), v.dot(this.col2)); }
+}
+
+// --- PHYSICS ---
+const BODY_CIRCLE = 0;
+const BODY_RECT = 1;
+
+class Body {
+  constructor(type, x, y, mass) {
+    this.type = type;
+    this.pos = new Vec2(x, y);
+    this.vel = new Vec2(0, 0);
+    this.force = new Vec2(0, 0);
+    this.angle = 0;
+    this.angularVel = 0;
+    this.torque = 0;
+
+    this.mass = mass;
+    this.invMass = mass > 0 ? 1 / mass : 0;
+    this.inertia = 0;
+    this.invInertia = 0;
+
+    this.friction = 0.5;
+    this.restitution = 0.2;
+
+    this.width = 0; this.height = 0;
+    this.radius = 0;
+
+    this.material = "wood";
+    this.life = 30;
+    this.maxLife = 30;
+    this.isSleeping = false;
+    this.sleepTimer = 0;
+    this.birdType = null;
+    this.isBird = false;
+    this.isPig = false;
+    this.isGround = false;
+    this.hasUsedAbility = false;
+    this.id = Math.random();
+  }
+
+  setBox(w, h, m) {
+    this.width = w; this.height = h; this.mass = m;
+    this.invMass = m > 0 ? 1/m : 0;
+    this.inertia = m > 0 ? (m * (w*w + h*h)) / 12 : 0;
+    this.invInertia = this.inertia > 0 ? 1/this.inertia : 0;
+  }
+
+  setCircle(r, m) {
+    this.radius = r; this.mass = m;
+    this.invMass = m > 0 ? 1/m : 0;
+    this.inertia = m > 0 ? (m * r * r) / 2 : 0;
+    this.invInertia = this.inertia > 0 ? 1/this.inertia : 0;
+  }
+
+  applyImpulse(impulse, contactVector) {
+    if (this.invMass === 0) return;
+    this.vel.addSelf(impulse.mult(this.invMass));
+    this.angularVel += this.invInertia * contactVector.cross(impulse);
+  }
+
+  takeDamage(amt) {
+    if (this.isBird || this.isGround) return false;
+    this.life -= amt;
+    return this.life <= 0;
+  }
+}
+
+class Manifold {
+  constructor(a, b) {
+    this.A = a; this.B = b;
+    this.penetration = 0;
+    this.normal = new Vec2();
+    this.contacts = []; // Array of Vec2
+  }
+}
+
+const Collide = {
+  circleCircle: function(m, a, b) {
+    let d = b.pos.sub(a.pos);
+    let distSq = d.lengthSq();
+    let radius = a.radius + b.radius;
+    if (distSq >= radius * radius) return false;
+    let dist = Math.sqrt(distSq);
+    if (dist === 0) {
+      m.penetration = a.radius;
+      m.normal = new Vec2(1, 0);
+      m.contacts.push(a.pos.clone());
+    } else {
+      m.penetration = radius - dist;
+      m.normal = d.mult(1/dist);
+      m.contacts.push(m.normal.mult(a.radius).addSelf(a.pos));
+    }
+    return true;
+  },
+
+  circleRect: function(m, c, r) {
+    // Convert circle to rect's local space
+    let rot = new Mat22(-r.angle);
+    let delta = c.pos.sub(r.pos);
+    let localC = rot.mul(delta);
+
+    let closestX = clamp(localC.x, -r.width/2, r.width/2);
+    let closestY = clamp(localC.y, -r.height/2, r.height/2);
+    let closest = new Vec2(closestX, closestY);
+
+    let isInside = false;
+    if (localC.distSq(closest) === 0) {
+      isInside = true;
+      if (Math.abs(localC.x) > Math.abs(localC.y)) {
+        if (closest.x > 0) closest.x = r.width/2; else closest.x = -r.width/2;
+      } else {
+        if (closest.y > 0) closest.y = r.height/2; else closest.y = -r.height/2;
+      }
+    }
+
+    let dist = localC.sub(closest);
+    let d = dist.lengthSq();
+    if (!isInside && d > c.radius * c.radius) return false;
+
+    d = Math.sqrt(d);
+    let rotWorld = new Mat22(r.angle);
+    m.normal = rotWorld.mul(dist);
+    if (d === 0) m.normal = new Vec2(0, 1);
+    else m.normal.multSelf(1/d);
+
+    if (isInside) m.normal.multSelf(-1);
+
+    m.penetration = c.radius - d;
+    if (isInside) m.penetration = c.radius + d;
+    m.contacts.push(m.normal.mult(isInside ? c.radius : -c.radius).addSelf(c.pos));
+
+    // Maintain consistency A=c, B=r or vice versa. The engine passes A and B.
+    // If the arguments are swapped in the caller, normal needs inversion.
+    return true;
+  },
+
+  rectRect: function(m, a, b) {
+    // Simplified SAT for OBB-OBB. Box2D style clipping.
+    let rotA = new Mat22(a.angle);
+    let rotB = new Mat22(b.angle);
+
+    let dp = b.pos.sub(a.pos);
+    let da = rotA.mulT(dp);
+    let db = rotB.mulT(dp);
+
+    let C = new Mat22(0);
+    C.col1 = rotA.mulT(rotB.col1);
+    C.col2 = rotA.mulT(rotB.col2);
+
+    let absC = new Mat22(0);
+    absC.col1 = new Vec2(Math.abs(C.col1.x), Math.abs(C.col1.y));
+    absC.col2 = new Vec2(Math.abs(C.col2.x), Math.abs(C.col2.y));
+
+    let faceA = new Vec2(
+      Math.abs(da.x) - a.width/2 - (absC.col1.x * b.width/2 + absC.col2.x * b.height/2),
+      Math.abs(da.y) - a.height/2 - (absC.col1.y * b.width/2 + absC.col2.y * b.height/2)
+    );
+    if (faceA.x > 0 || faceA.y > 0) return false;
+
+    let faceB = new Vec2(
+      Math.abs(db.x) - b.width/2 - (absC.col1.x * a.width/2 + absC.col1.y * a.height/2),
+      Math.abs(db.y) - b.height/2 - (absC.col2.x * a.width/2 + absC.col2.y * a.height/2)
+    );
+    if (faceB.x > 0 || faceB.y > 0) return false;
+
+    // Find axis of least penetration
+    let axis = 0;
+    let separation = faceA.x;
+    let normal = dp.x > 0 ? rotA.col1 : rotA.col1.mult(-1);
+
+    if (faceA.y > separation + 0.01) {
+      separation = faceA.y; axis = 1;
+      normal = dp.y > 0 ? rotA.col2 : rotA.col2.mult(-1);
+    }
+    if (faceB.x > separation + 0.01) {
+      separation = faceB.x; axis = 2;
+      normal = db.x > 0 ? rotB.col1 : rotB.col1.mult(-1);
+    }
+    if (faceB.y > separation + 0.01) {
+      separation = faceB.y; axis = 3;
+      normal = db.y > 0 ? rotB.col2 : rotB.col2.mult(-1);
+    }
+
+    m.penetration = -separation;
+    m.normal = normal;
+
+    // Simple contact point estimation for this prototype (approx 1 or 2 points)
+    // To simplify, just use 1 contact point at the midpoint of overlap along normal.
+    // This isn't perfect for stacking (towers might wobble) but works for a lightweight engine.
+    let contactA = a.pos.add(m.normal.mult(a.width/2)); // approx
+    let contactB = b.pos.sub(m.normal.mult(b.width/2));
+    m.contacts.push(a.pos.add(b.pos).mult(0.5)); // Fallback center point contact
+
+    // Let's implement a slightly better contact point:
+    // Project centers onto normal, find overlapping segment.
+    return true;
+  }
+};
+
+class Solver {
+  static resolve(manifolds) {
+    for (let i = 0; i < 6; i++) {
+      for (let m of manifolds) {
+        let A = m.A; let B = m.B;
+        if (A.invMass === 0 && B.invMass === 0) continue;
+
+        for (let j = 0; j < m.contacts.length; j++) {
+          let cp = m.contacts[j];
+          let rA = cp.sub(A.pos);
+          let rB = cp.sub(B.pos);
+
+          let rvA = A.vel.add(crossScalarVec(A.angularVel, rA));
+          let rvB = B.vel.add(crossScalarVec(B.angularVel, rB));
+          let rv = rvB.sub(rvA);
+
+          let velAlongNormal = rv.dot(m.normal);
+          if (velAlongNormal > 0) continue;
+
+          let e = Math.min(A.restitution, B.restitution);
+
+          let rACrossN = rA.cross(m.normal);
+          let rBCrossN = rB.cross(m.normal);
+          let invMassSum = A.invMass + B.invMass +
+                           (rACrossN * rACrossN) * A.invInertia +
+                           (rBCrossN * rBCrossN) * B.invInertia;
+
+          let jNormal = -(1 + e) * velAlongNormal;
+          jNormal /= invMassSum;
+          jNormal /= m.contacts.length;
+
+          let impulse = m.normal.mult(jNormal);
+          A.applyImpulse(impulse.mult(-1), rA);
+          B.applyImpulse(impulse, rB);
+
+          // Friction
+          rvA = A.vel.add(crossScalarVec(A.angularVel, rA));
+          rvB = B.vel.add(crossScalarVec(B.angularVel, rB));
+          rv = rvB.sub(rvA);
+
+          let t = rv.sub(m.normal.mult(rv.dot(m.normal)));
+          if (t.lengthSq() > 0.0001) t.normalize();
+          else t = new Vec2();
+
+          let jt = -rv.dot(t);
+          jt /= invMassSum;
+          jt /= m.contacts.length;
+          if (Math.abs(jt) < 0.0001) continue;
+
+          let mu = Math.sqrt(A.friction * A.friction + B.friction * B.friction);
+          let frictionImpulse;
+          if (Math.abs(jt) < jNormal * mu) {
+            frictionImpulse = t.mult(jt);
+          } else {
+            frictionImpulse = t.mult(-jNormal * mu);
+          }
+
+          A.applyImpulse(frictionImpulse.mult(-1), rA);
+          B.applyImpulse(frictionImpulse, rB);
+
+          // Damage system
+          let impactForce = Math.abs(jNormal);
+          if (impactForce > 150) {
+            let dmg = impactForce * 0.05;
+            if (A.takeDamage(dmg)) game.destroyBody(A);
+            if (B.takeDamage(dmg)) game.destroyBody(B);
+
+            if (impactForce > 300 && game && game.audio) {
+               game.audio.playImpact(A.material);
+               game.audio.playImpact(B.material);
+            }
+          }
+        }
+      }
+    }
+
+    // Positional correction
+    const percent = 0.4;
+    const slop = 0.05;
+    for (let m of manifolds) {
+      let A = m.A; let B = m.B;
+      if (A.invMass === 0 && B.invMass === 0) continue;
+      let correction = Math.max(m.penetration - slop, 0) / (A.invMass + B.invMass) * percent;
+      let corrVec = m.normal.mult(correction);
+      A.pos.subSelf(corrVec.mult(A.invMass));
+      B.pos.addSelf(corrVec.mult(B.invMass));
+    }
+  }
+}
+
+class PhysicsWorld {
+  constructor() {
+    this.bodies = [];
+    this.gravity = new Vec2(0, 980); // Scaled for pixels
+  }
+
+  addBody(b) { this.bodies.push(b); }
+  removeBody(b) { let i = this.bodies.indexOf(b); if (i > -1) this.bodies.splice(i, 1); }
+
+  step(dt) {
+    // Wake up birds/pigs if they move fast enough
+
+    // Integration
+    for (let b of this.bodies) {
+      if (b.invMass === 0) continue;
+      if (b.isSleeping) continue;
+
+      b.vel.addSelf(this.gravity.mult(dt));
+      b.vel.addSelf(b.force.mult(b.invMass * dt));
+      b.angularVel += b.torque * b.invInertia * dt;
+
+      b.pos.addSelf(b.vel.mult(dt));
+      b.angle += b.angularVel * dt;
+
+      b.force.set(0, 0);
+      b.torque = 0;
+
+      // Sleeping logic
+      if (b.vel.lengthSq() < 10 && Math.abs(b.angularVel) < 0.5) {
+        b.sleepTimer += dt;
+        if (b.sleepTimer > 0.5) { // 30 frames roughly
+          b.isSleeping = true;
+          b.vel.set(0,0); b.angularVel = 0;
+        }
+      } else {
+        b.sleepTimer = 0;
+      }
+    }
+
+    // Broadphase O(N^2) for simplicity, could be optimized
+    let manifolds = [];
+    for (let i = 0; i < this.bodies.length; i++) {
+      for (let j = i + 1; j < this.bodies.length; j++) {
+        let A = this.bodies[i]; let B = this.bodies[j];
+        if (A.invMass === 0 && B.invMass === 0) continue;
+        if (A.isSleeping && B.isSleeping) continue;
+
+        let m = new Manifold(A, B);
+        let collision = false;
+
+        if (A.type === BODY_CIRCLE && B.type === BODY_CIRCLE) {
+          collision = Collide.circleCircle(m, A, B);
+        } else if (A.type === BODY_RECT && B.type === BODY_RECT) {
+          collision = Collide.rectRect(m, A, B);
+        } else {
+          // Circle vs Rect
+          if (A.type === BODY_CIRCLE) {
+            collision = Collide.circleRect(m, A, B);
+          } else {
+            collision = Collide.circleRect(m, B, A);
+            if (collision) { m.normal.multSelf(-1); m.A = B; m.B = A; }
+          }
+        }
+
+        if (collision) {
+          A.isSleeping = false; A.sleepTimer = 0;
+          B.isSleeping = false; B.sleepTimer = 0;
+          manifolds.push(m);
+        }
+      }
+    }
+
+    Solver.resolve(manifolds);
+  }
+}
+
+// --- GAME OBJECTS ---
+
+class ParticleSystem {
+  constructor() { this.particles = []; }
+  spawn(x, y, material) {
+    let color = "#888";
+    if (material === "wood") color = "#8b5a2b";
+    else if (material === "glass") color = "rgba(0, 255, 255, 0.5)";
+    else if (material === "pig") color = "#4CAF50";
+    else if (material === "bird") color = "#f00";
+
+    for (let i = 0; i < 15; i++) {
+      this.particles.push({
+        x: x, y: y,
+        vx: random(-100, 100), vy: random(-100, 100),
+        life: random(0.5, 1.5),
+        maxLife: 1.5,
+        color: color,
+        size: random(3, 8)
+      });
+    }
+  }
+  update(dt) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      let p = this.particles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+  }
+  draw(ctx) {
+    for (let p of this.particles) {
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.life / p.maxLife;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1.0;
+  }
+}
+
+class FloatingText {
+  constructor() { this.texts = []; }
+  add(text, x, y) { this.texts.push({ text: text, x: x, y: y, life: 1.0 }); }
+  update(dt) {
+    for (let i = this.texts.length - 1; i >= 0; i--) {
+      let t = this.texts[i];
+      t.y -= 50 * dt;
+      t.life -= dt;
+      if (t.life <= 0) this.texts.splice(i, 1);
+    }
+  }
+  draw(ctx) {
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    for (let t of this.texts) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${t.life})`;
+      ctx.strokeStyle = `rgba(0, 0, 0, ${t.life})`;
+      ctx.lineWidth = 3;
+      ctx.strokeText(t.text, t.x, t.y);
+      ctx.fillText(t.text, t.x, t.y);
+    }
+  }
+}
+
+class Camera {
+  constructor() {
+    this.x = 0; this.y = 0; this.scale = 1;
+    this.target = null;
+  }
+  update(dt, canvas) {
+    let tx = 0, ty = 0;
+    if (this.target) {
+      tx = this.target.pos.x - canvas.width / 2;
+      // Clamp ty to not go too high or too low
+      ty = this.target.pos.y - canvas.height / 2 + 150;
+    } else {
+      tx = 200 - canvas.width / 2;
+      ty = 500 - canvas.height / 2;
+    }
+    tx = Math.max(0, tx); // Dont go left of slingshot
+    this.x += (tx - this.x) * 5 * dt;
+    this.y += (ty - this.y) * 5 * dt;
+  }
+  apply(ctx) {
+    ctx.save();
+    ctx.scale(this.scale, this.scale);
+    ctx.translate(-this.x, -this.y);
+  }
+  reset(ctx) {
+    ctx.restore();
+  }
+}
+
+// --- AUDIO MANAGER ---
+class AudioManager {
+  constructor() {
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.muted = false;
+  }
+  playTone(freq, type, duration, vol) {
+    if (this.muted) return;
+    let osc = this.ctx.createOscillator();
+    let gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(this.ctx.currentTime + duration);
+  }
+  playNoise(duration, vol) {
+    if (this.muted) return;
+    let bufferSize = this.ctx.sampleRate * duration;
+    let buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    let data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    let noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+    let gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+    noise.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start();
+  }
+  playStretch() { this.playTone(300, 'sine', 0.1, 0.1); }
+  playLaunch() { this.playTone(200, 'triangle', 0.4, 0.3); }
+  playImpact(mat) {
+    if (mat === "wood") this.playTone(150, 'square', 0.1, 0.2);
+    else if (mat === "stone") this.playTone(100, 'square', 0.2, 0.3);
+    else if (mat === "glass") this.playNoise(0.1, 0.2);
+    else if (mat === "pig") this.playTone(400, 'sine', 0.2, 0.3);
+  }
+  playPop() { this.playTone(600, 'sine', 0.1, 0.2); }
+}
+
+// --- GAME LOGIC ---
+
+
+class Slingshot {
+  constructor(x, y) {
+    this.base = new Vec2(x, y);
+    this.maxDrag = 120;
+    this.isDragging = false;
+    this.dragPos = new Vec2();
+    this.loadedBird = null;
+  }
+
+  startDrag(x, y) {
+    this.isDragging = true;
+    this.dragPos.set(x, y);
+  }
+
+  drag(x, y) {
+    if (!this.isDragging) return;
+    let p = new Vec2(x, y);
+    let d = p.sub(this.base);
+    if (d.length() > this.maxDrag) {
+      d.normalize().multSelf(this.maxDrag);
+      p = this.base.add(d);
+    }
+    this.dragPos.copy(p);
+    if (this.loadedBird) this.loadedBird.pos.copy(p);
+  }
+
+  release() {
+    if (!this.isDragging) return null;
+    this.isDragging = false;
+    let d = this.base.sub(this.dragPos);
+    if (d.length() < 10) return null; // too weak
+
+    let bird = this.loadedBird;
+    this.loadedBird = null;
+    return { bird: bird, d: d };
+  }
+
+  draw(ctx, world) {
+    // Slingshot back
+    ctx.fillStyle = "#5d4037";
+    ctx.fillRect(this.base.x - 10, this.base.y, 20, 100);
+
+    // Slingshot rubber band back
+    if (this.isDragging) {
+      ctx.beginPath();
+      ctx.moveTo(this.base.x - 10, this.base.y + 10);
+      ctx.lineTo(this.dragPos.x, this.dragPos.y);
+      ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 6; ctx.stroke();
+    }
+
+    // Trajectory prediction
+    if (this.isDragging) {
+      ctx.fillStyle = "white";
+      let v = this.base.sub(this.dragPos).mult(7);
+      let p = this.base.clone();
+      let step = 0.1;
+      for (let i = 0; i < 20; i++) {
+        p.x += v.x * step;
+        p.y += v.y * step;
+        v.y += world.gravity.y * step;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI*2); ctx.fill();
+      }
+    }
+  }
+
+  drawFront(ctx) {
+    // Slingshot front
+    ctx.fillStyle = "#4e342e";
+    ctx.fillRect(this.base.x + 5, this.base.y - 10, 15, 60);
+
+    // Slingshot rubber band front
+    if (this.isDragging) {
+      ctx.beginPath();
+      ctx.moveTo(this.base.x + 10, this.base.y + 10);
+      ctx.lineTo(this.dragPos.x, this.dragPos.y);
+      ctx.strokeStyle = "#3e2723"; ctx.lineWidth = 6; ctx.stroke();
+    }
+  }
+}
+
+
+class LevelManager {
+  constructor() {
+    this.levels = [
+      { // 1
+        birds: ["red", "red", "yellow"],
+        blocks: [ {x: 800, y: 550, w: 40, h: 100, mat: "wood"}, {x: 900, y: 550, w: 40, h: 100, mat: "wood"}, {x: 850, y: 480, w: 140, h: 20, mat: "wood"} ],
+        pigs: [ {x: 850, y: 550} ]
+      },
+      { // 2
+        birds: ["red", "yellow", "black"],
+        blocks: [
+          {x: 800, y: 550, w: 40, h: 100, mat: "stone"}, {x: 900, y: 550, w: 40, h: 100, mat: "stone"}, {x: 850, y: 480, w: 140, h: 20, mat: "wood"},
+          {x: 825, y: 420, w: 20, h: 100, mat: "glass"}, {x: 875, y: 420, w: 20, h: 100, mat: "glass"}, {x: 850, y: 360, w: 100, h: 20, mat: "wood"}
+        ],
+        pigs: [ {x: 850, y: 550}, {x: 850, y: 420} ]
+      },
+      { // 3
+        birds: ["yellow", "black", "red"],
+        blocks: [
+          {x: 700, y: 550, w: 30, h: 100, mat: "wood"}, {x: 760, y: 550, w: 30, h: 100, mat: "wood"}, {x: 730, y: 480, w: 100, h: 20, mat: "stone"},
+          {x: 900, y: 550, w: 30, h: 100, mat: "wood"}, {x: 960, y: 550, w: 30, h: 100, mat: "wood"}, {x: 930, y: 480, w: 100, h: 20, mat: "stone"},
+          {x: 830, y: 400, w: 250, h: 20, mat: "wood"}
+        ],
+        pigs: [ {x: 730, y: 550}, {x: 930, y: 550}, {x: 830, y: 350} ]
+      },
+      { // 4
+        birds: ["black", "black", "yellow"],
+        blocks: [
+          {x: 800, y: 550, w: 50, h: 100, mat: "stone"}, {x: 880, y: 550, w: 50, h: 100, mat: "stone"}, {x: 960, y: 550, w: 50, h: 100, mat: "stone"},
+          {x: 840, y: 480, w: 140, h: 20, mat: "stone"}, {x: 920, y: 480, w: 140, h: 20, mat: "stone"},
+          {x: 880, y: 420, w: 40, h: 100, mat: "glass"}
+        ],
+        pigs: [ {x: 840, y: 550}, {x: 920, y: 550}, {x: 880, y: 450} ]
+      },
+      { // 5
+        birds: ["yellow", "black", "yellow", "red"],
+        blocks: [
+          {x: 750, y: 550, w: 20, h: 100, mat: "glass"}, {x: 850, y: 550, w: 20, h: 100, mat: "glass"}, {x: 800, y: 480, w: 140, h: 20, mat: "wood"},
+          {x: 775, y: 420, w: 20, h: 100, mat: "wood"}, {x: 825, y: 420, w: 20, h: 100, mat: "wood"}, {x: 800, y: 360, w: 100, h: 20, mat: "stone"},
+          {x: 800, y: 300, w: 40, h: 100, mat: "stone"}
+        ],
+        pigs: [ {x: 800, y: 550}, {x: 800, y: 420}, {x: 750, y: 420}, {x: 850, y: 420} ]
+      }
+    ];
+  }
+
+  getLevel(idx) {
+    if (idx < 0 || idx >= this.levels.length) return this.levels[0];
+    return this.levels[idx];
+  }
+}
+
+class Game {
+  constructor() {
+    this.canvas = document.getElementById('gameCanvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+
+    this.world = new PhysicsWorld();
+    this.camera = new Camera();
+    this.particles = new ParticleSystem();
+    this.floats = new FloatingText();
+    this.audio = new AudioManager();
+
+    this.state = "START"; // START, PLAY, PAUSE, WIN, LOSE
+    this.score = 0;
+    this.levelIdx = 0;
+
+    this.slingshot = new Slingshot(250, 500);
+    this.levelManager = new LevelManager();
+    this.currentBird = null;
+    this.birdsQueue = [];
+    this.pigsAlive = 0;
+
+    this.birdInFlight = null;
+    this.flightTimer = 0;
+
+    this.autoPlay = false;
+    this.autoTimer = 0;
+
+    this.setupInput();
+    this.loadLevel(0);
+
+    this.lastTime = performance.now();
+    this.accumulator = 0;
+    requestAnimationFrame((t) => this.loop(t));
+  }
+
+  resize() {
+    this.canvas.width = window.innerWidth;
+    this.canvas.height = window.innerHeight;
+    this.groundY = 600;
+  }
+
+  setupInput() {
+    let down = (x, y) => {
+      if (this.state !== "PLAY") return;
+      if (this.birdInFlight) {
+        // Use ability
+        if (!this.birdInFlight.hasUsedAbility) {
+          this.birdInFlight.hasUsedAbility = true;
+          if (this.birdInFlight.birdType === "yellow") {
+            this.birdInFlight.vel.x *= 2;
+            this.audio.playLaunch();
+          } else if (this.birdInFlight.birdType === "black") {
+            this.explode(this.birdInFlight.pos, 250, 500000);
+            this.particles.spawn(this.birdInFlight.pos.x, this.birdInFlight.pos.y, "bird");
+            this.destroyBody(this.birdInFlight);
+            this.birdInFlight = null;
+            this.camera.target = null;
+            this.audio.playImpact("stone");
+          }
+        }
+        return;
+      }
+
+      let worldX = x / this.camera.scale + this.camera.x;
+      let worldY = y / this.camera.scale + this.camera.y;
+      let dist = new Vec2(worldX, worldY).dist(this.slingshot.base);
+
+      if (dist < 100 && this.currentBird) {
+        this.slingshot.startDrag(worldX, worldY);
+        this.audio.playStretch();
+      }
+    };
+
+    let move = (x, y) => {
+      if (!this.slingshot.isDragging) return;
+      let worldX = x / this.camera.scale + this.camera.x;
+      let worldY = y / this.camera.scale + this.camera.y;
+      this.slingshot.drag(worldX, worldY);
+    };
+
+    let up = () => {
+      if (!this.slingshot.isDragging) return;
+      this.launchBird();
+    };
+
+    this.canvas.addEventListener('mousedown', e => down(e.clientX, e.clientY));
+    this.canvas.addEventListener('mousemove', e => move(e.clientX, e.clientY));
+    this.canvas.addEventListener('mouseup', up);
+    this.canvas.addEventListener('touchstart', e => { e.preventDefault(); down(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+    this.canvas.addEventListener('touchmove', e => { e.preventDefault(); move(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
+    this.canvas.addEventListener('touchend', up);
+
+    document.getElementById('btn-pause').onclick = () => {
+      if (this.state === "PLAY") { this.state = "PAUSE"; document.getElementById('btn-pause').innerText = "▶"; }
+      else if (this.state === "PAUSE") { this.state = "PLAY"; document.getElementById('btn-pause').innerText = "⏸"; }
+    };
+    document.getElementById('btn-restart').onclick = () => this.loadLevel(this.levelIdx);
+    document.getElementById('btn-sound').onclick = () => {
+      this.audio.muted = !this.audio.muted;
+      document.getElementById('btn-sound').style.opacity = this.audio.muted ? 0.5 : 1;
+    };
+    document.getElementById('btn-auto').onclick = () => {
+      this.autoPlay = !this.autoPlay;
+      document.getElementById('btn-auto').style.background = this.autoPlay ? "#ffeb3b" : "rgba(255,255,255,0.8)";
+    };
+
+    document.getElementById('btn-retry').onclick = () => {
+      document.getElementById('overlay').style.display = "none";
+      this.loadLevel(this.levelIdx);
+    };
+    document.getElementById('btn-next').onclick = () => {
+      document.getElementById('overlay').style.display = "none";
+      this.loadLevel(this.levelIdx + 1);
+    };
+
+    window.addEventListener('keydown', e => {
+      if (e.key === 'r' || e.key === 'R') this.loadLevel(this.levelIdx);
+      if (e.key === 'n' || e.key === 'N') this.loadLevel(this.levelIdx + 1);
+    });
+  }
+
+  explode(pos, radius, force) {
+    for (let b of this.world.bodies) {
+      if (b.invMass === 0 || b.isGround) continue;
+      let d = b.pos.sub(pos);
+      let dist = d.length();
+      if (dist < radius) {
+        let f = d.normalize().mult(force * (1 - dist/radius));
+        b.applyImpulse(f.mult(0.016), new Vec2());
+        b.isSleeping = false;
+        b.takeDamage(10);
+      }
+    }
+  }
+
+  launchBird() {
+    let result = this.slingshot.release();
+    if (!result) return;
+
+    let d = result.d;
+    this.birdInFlight = result.bird;
+    this.currentBird = null;
+    this.birdInFlight.type = BODY_CIRCLE; // Enable physics
+    this.birdInFlight.isSleeping = false;
+    this.birdInFlight.vel = d.mult(7); // Power multiplier
+    this.birdInFlight.angularVel = d.x * 0.05;
+    this.camera.target = this.birdInFlight;
+    this.flightTimer = 0;
+    this.audio.playLaunch();
+    this.updateBirdsUI();
+  }
+
+  loadLevel(idx) {
+    if (idx > 4) idx = 0;
+    this.levelIdx = idx;
+    this.score = 0;
+    this.world = new PhysicsWorld();
+    this.state = "PLAY";
+    this.birdInFlight = null;
+    this.currentBird = null;
+    this.camera.target = null;
+    this.camera.x = 0;
+
+    // Add ground
+    let ground = new Body(BODY_RECT, 2000, this.groundY + 250, 0); // static
+    ground.setBox(8000, 500, 0);
+    ground.isGround = true;
+    ground.friction = 0.8;
+    this.world.addBody(ground);
+
+    let lvl = this.levelManager.getLevel(idx);
+    this.birdsQueue = [...lvl.birds];
+
+    for (let bl of lvl.blocks) {
+      let mass = bl.mat === "stone" ? 10 : (bl.mat === "wood" ? 5 : 2);
+      let b = new Body(BODY_RECT, bl.x, bl.y, mass);
+      b.setBox(bl.w, bl.h, mass);
+      b.material = bl.mat;
+      b.life = bl.mat === "stone" ? 100 : (bl.mat === "wood" ? 30 : 10);
+      b.maxLife = b.life;
+      this.world.addBody(b);
+    }
+
+    this.pigsAlive = 0;
+    for (let p of lvl.pigs) {
+      let b = new Body(BODY_CIRCLE, p.x, p.y, 4);
+      b.setCircle(18, 4);
+      b.material = "pig";
+      b.life = 20; b.maxLife = 20;
+      b.isPig = true;
+      this.world.addBody(b);
+      this.pigsAlive++;
+    }
+
+    this.spawnNextBird();
+    document.getElementById('score').innerText = "0";
+    document.getElementById('overlay').style.display = "none";
+  }
+
+  spawnNextBird() {
+    if (this.birdsQueue.length === 0) return false;
+    let type = this.birdsQueue.shift();
+    let b = new Body(BODY_CIRCLE, this.slingshot.base.x, this.slingshot.base.y, 5);
+    b.setCircle(15, 5); // Birds are circles
+    b.material = "bird";
+    b.birdType = type;
+    b.isBird = true;
+    b.isSleeping = true;
+    b.invMass = 0; // Fixed until launched
+    this.currentBird = b;
+    this.slingshot.loadedBird = b;
+    this.world.addBody(b);
+    this.updateBirdsUI();
+    return true;
+  }
+
+  updateBirdsUI() {
+    let bar = document.getElementById('birds-bar');
+    bar.innerHTML = "";
+    let q = [];
+    if (this.currentBird) q.push(this.currentBird.birdType);
+    q = q.concat(this.birdsQueue);
+    for (let type of q) {
+      let color = type === "red" ? "#e53935" : (type === "yellow" ? "#fdd835" : "#212121");
+      bar.innerHTML += `<div class="bird-icon" style="background:${color};"></div>`;
+    }
+  }
+
+  destroyBody(b) {
+    if (b.isPig) {
+      this.pigsAlive--;
+      this.addScore(500, b.pos.x, b.pos.y);
+      this.audio.playPop();
+    } else {
+      this.addScore(100, b.pos.x, b.pos.y);
+    }
+    this.particles.spawn(b.pos.x, b.pos.y, b.material);
+    this.world.removeBody(b);
+
+    if (this.pigsAlive <= 0) {
+      setTimeout(() => this.showEndScreen(true), 1500);
+    }
+  }
+
+  addScore(pts, x, y) {
+    this.score += pts;
+    document.getElementById('score').innerText = this.score;
+    this.floats.add("+" + pts, x, y - 20);
+  }
+
+  showEndScreen(win) {
+    if (this.state === "WIN" || this.state === "LOSE") return;
+    this.state = win ? "WIN" : "LOSE";
+    let overlay = document.getElementById('overlay');
+    let title = document.getElementById('overlay-title');
+    let stars = document.getElementById('overlay-stars');
+    let btnNext = document.getElementById('btn-next');
+
+    overlay.style.display = "flex";
+    title.innerText = win ? "¡VICTORIA!" : "¡DERROTA!";
+    title.style.color = win ? "#4CAF50" : "#F44336";
+
+    if (win) {
+      let s = 1 + Math.min(2, Math.floor(this.birdsQueue.length));
+      stars.innerText = "★".repeat(s) + "☆".repeat(3-s);
+      btnNext.style.display = "inline-block";
+    } else {
+      stars.innerText = "☆☆☆";
+      btnNext.style.display = "none";
+    }
+  }
+
+  doAutoPlay() {
+    if (!this.currentBird || this.state !== "PLAY") return;
+    // Find closest pig
+    let target = null;
+    let minDist = 99999;
+    for (let b of this.world.bodies) {
+      if (b.isPig) {
+        let d = b.pos.dist(this.slingshot.base);
+        if (d < minDist) { minDist = d; target = b; }
+      }
+    }
+    if (!target) return;
+
+    // Calculate arc
+    let dx = target.pos.x - this.slingshot.base.x;
+    let dy = target.pos.y - this.slingshot.base.y;
+    let v0 = 85; // Fixed launch velocity magnitude
+    let g = this.world.gravity.y * 0.01; // Approx
+
+    // Try high arc
+    let root = Math.pow(v0, 4) - g * (g * dx * dx + 2 * dy * v0 * v0);
+    if (root < 0) root = 0; // Unreachable, just shoot towards it
+    let angle = Math.atan((v0*v0 + Math.sqrt(root)) / (g * dx));
+    if (isNaN(angle)) angle = Math.atan2(dy, dx) - 0.2;
+
+    let dragVec = new Vec2(Math.cos(angle), Math.sin(angle)).mult(this.slingshot.maxDrag * -1);
+
+    let p = this.slingshot.base.add(dragVec);
+    this.slingshot.startDrag(p.x, p.y);
+    // Force visual update
+    this.slingshot.dragPos.copy(p);
+    if (this.slingshot.loadedBird) {
+        this.slingshot.loadedBird.pos.copy(p);
+    }
+
+    setTimeout(() => {
+      this.launchBird();
+    }, 500);
+  }
+
+  loop(time) {
+    requestAnimationFrame((t) => this.loop(t));
+    let dt = (time - this.lastTime) / 1000;
+    this.lastTime = time;
+    if (dt > 0.1) dt = 0.1;
+
+    if (this.state === "PLAY") {
+      this.accumulator += dt;
+      let fixedDt = 1/60;
+      while (this.accumulator >= fixedDt) {
+        this.world.step(fixedDt);
+        this.accumulator -= fixedDt;
+      }
+      this.particles.update(dt);
+      this.floats.update(dt);
+      this.camera.update(dt, this.canvas);
+
+      // Flight logic
+      if (this.birdInFlight) {
+        this.flightTimer += dt;
+        let b = this.birdInFlight;
+
+        // Auto use ability for AI
+        if (this.autoPlay && this.flightTimer > 1.0 && !b.hasUsedAbility) {
+            b.hasUsedAbility = true;
+            if (b.birdType === "yellow") b.vel.x *= 2;
+            else if (b.birdType === "black") { this.explode(b.pos, 250, 500000); this.destroyBody(b); this.birdInFlight=null; }
+        }
+
+        if (b && (b.vel.lengthSq() < 10 || b.pos.x > 3000 || b.pos.x < -1000 || this.flightTimer > 10)) {
+          // Bird stopped
+          this.camera.target = null;
+          this.birdInFlight = null;
+          setTimeout(() => {
+            if (this.pigsAlive > 0) {
+              if (!this.spawnNextBird()) {
+                this.showEndScreen(false);
+              }
+            }
+          }, 2000);
+        }
+      }
+
+      if (this.autoPlay && this.currentBird && !this.birdInFlight) {
+        this.autoTimer += dt;
+        if (this.autoTimer > 1.5) {
+          this.autoTimer = 0;
+          this.doAutoPlay();
+        }
+      }
+    }
+
+    this.draw();
+  }
+
+  draw() {
+    let ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Background gradient
+    let grad = ctx.createLinearGradient(0, 0, 0, this.canvas.height);
+    grad.addColorStop(0, "#4facfe");
+    grad.addColorStop(1, "#00f2fe");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    this.camera.apply(ctx);
+
+    // Draw ground
+    ctx.fillStyle = "#2e7d32";
+    ctx.fillRect(-1000, this.groundY, 4000, 500);
+    ctx.fillStyle = "#1b5e20";
+    ctx.fillRect(-1000, this.groundY + 20, 4000, 480);
+
+    this.slingshot.draw(ctx, this.world);
+
+    // Bodies
+    for (let b of this.world.bodies) {
+      if (b.isGround) continue;
+
+      ctx.save();
+      ctx.translate(b.pos.x, b.pos.y);
+      ctx.rotate(b.angle);
+
+      if (b.type === BODY_RECT) {
+        if (b.material === "wood") {
+          ctx.fillStyle = "#d7ccc8"; ctx.strokeStyle = "#8d6e63";
+          ctx.fillRect(-b.width/2, -b.height/2, b.width, b.height);
+          ctx.lineWidth = 2; ctx.strokeRect(-b.width/2, -b.height/2, b.width, b.height);
+          // wood grains
+          ctx.beginPath(); ctx.moveTo(-b.width/3, -b.height/2); ctx.lineTo(-b.width/3, b.height/2); ctx.stroke();
+        } else if (b.material === "stone") {
+          ctx.fillStyle = "#9e9e9e"; ctx.strokeStyle = "#616161";
+          ctx.fillRect(-b.width/2, -b.height/2, b.width, b.height);
+          ctx.lineWidth = 2; ctx.strokeRect(-b.width/2, -b.height/2, b.width, b.height);
+          // dots
+          ctx.fillStyle = "#757575";
+          ctx.fillRect(-b.width/4, -b.height/4, 4, 4);
+          ctx.fillRect(b.width/4, b.height/4, 4, 4);
+        } else if (b.material === "glass") {
+          ctx.fillStyle = "rgba(178, 235, 242, 0.7)"; ctx.strokeStyle = "#80deea";
+          ctx.fillRect(-b.width/2, -b.height/2, b.width, b.height);
+          ctx.lineWidth = 2; ctx.strokeRect(-b.width/2, -b.height/2, b.width, b.height);
+        }
+
+        // Damage cracks
+        if (b.life < b.maxLife * 0.5) {
+          ctx.beginPath(); ctx.moveTo(-b.width/2, -b.height/2); ctx.lineTo(b.width/2, b.height/2);
+          ctx.strokeStyle = "rgba(0,0,0,0.5)"; ctx.stroke();
+        }
+
+      } else if (b.type === BODY_CIRCLE) {
+        if (b.isPig) {
+          ctx.fillStyle = "#81c784"; ctx.strokeStyle = "#388e3c";
+          ctx.beginPath(); ctx.arc(0, 0, b.radius, 0, Math.PI*2); ctx.fill(); ctx.lineWidth=3; ctx.stroke();
+          // eyes & snout
+          ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(-5, -3, 3, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(5, -3, 3, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = "#66bb6a"; ctx.beginPath(); ctx.ellipse(0, 4, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+        } else if (b.isBird) {
+          ctx.fillStyle = b.birdType === "red" ? "#e53935" : (b.birdType === "yellow" ? "#fdd835" : "#212121");
+          ctx.strokeStyle = "black";
+          ctx.beginPath(); ctx.arc(0, 0, b.radius, 0, Math.PI*2); ctx.fill(); ctx.lineWidth=2; ctx.stroke();
+          // beak & eyes
+          ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(4, -4, 4, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = "black"; ctx.beginPath(); ctx.arc(5, -4, 1.5, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = "#ffb300"; ctx.beginPath(); ctx.moveTo(b.radius, 0); ctx.lineTo(b.radius+8, 4); ctx.lineTo(b.radius, 8); ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    this.slingshot.drawFront(ctx);
+
+    this.particles.draw(ctx);
+    this.floats.draw(ctx);
+    this.camera.reset(ctx);
+  }
+}
+
+// Init
+let game;
+window.onload = () => { game = new Game(); };
+
+</script>
+</body>
+</html>
