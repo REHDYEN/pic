@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Cyberpunk Cat Platformer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23050510'/><path d='M20 80 L20 40 L40 60 L60 60 L80 40 L80 80 Z' fill='%230ff' stroke='%23f0f' stroke-width='5'/></svg>">
 <style>
   body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #050510; font-family: 'Courier New', Courier, monospace; user-select: none; -webkit-user-select: none; touch-action: none; }
   canvas { display: block; width: 100%; height: 100%; }
@@ -22,6 +23,12 @@
   .c-btn:active { background: rgba(255, 0, 255, 0.5); }
 
   @media (min-width: 800px) { #controls { display: none; } }
+
+  #radio-container { position: absolute; top: 20px; right: 20px; background: rgba(5,5,16,0.8); border: 2px solid #f0f; border-radius: 10px; padding: 10px; box-shadow: 0 0 15px #f0f; pointer-events: auto; display: flex; flex-direction: column; gap: 5px; z-index: 100; backdrop-filter: blur(5px); }
+  #radio-header { color: #f0f; font-size: 16px; font-weight: bold; text-align: center; text-shadow: 0 0 5px #f0f; margin-bottom: 5px; letter-spacing: 1px; }
+  #radio-stations { background: #000; color: #0ff; border: 1px solid #0ff; padding: 5px; font-family: 'Courier New', Courier, monospace; outline: none; cursor: pointer; }
+  #radio-controls { display: flex; gap: 10px; align-items: center; margin-top: 5px; }
+  #radio-vol { width: 80px; accent-color: #f0f; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -33,6 +40,24 @@
   <div id="msg-container">
     <div id="msg-text">NIVEL COMPLETADO</div>
     <div id="btn-restart" class="btn">REINICIAR SISTEMA</div>
+  </div>
+
+
+  <div id="radio-container">
+    <div id="radio-header">📻 CYBER-FLOW RADIO</div>
+    <select id="radio-stations">
+      <option value="">[ SISTEMA OFFLINE ]</option>
+      <option value="https://streams.ilovemusic.de/iloveradio109.mp3">Cyberpunk / Synthwave</option>
+      <option value="https://streams.ilovemusic.de/iloveradio14.mp3">Latino Flow / Urban</option>
+      <option value="https://streams.ilovemusic.de/iloveradio17.mp3">Lofi Chill (Hacking...)</option>
+      <option value="http://icecast.vrtcdn.be/mnm-hits.mp3">MNM Hits (Mundo)</option>
+      <option value="https://streams.ilovemusic.de/iloveradio1.mp3">Top 40 / Pop</option>
+    </select>
+    <div id="radio-controls">
+      <button id="btn-radio-play" class="btn" style="padding: 5px 10px; font-size: 14px; margin-top: 0; box-shadow: 0 0 5px #0ff;">▶ PLAY</button>
+      <input type="range" id="radio-vol" min="0" max="1" step="0.05" value="0.3" title="Volumen">
+    </div>
+    <audio id="radio-player" style="display:none;" volume="0.3"></audio>
   </div>
 
   <div id="controls">
@@ -615,7 +640,62 @@ class Game {
     window.addEventListener('keydown', e => setKey(e.code, true));
     window.addEventListener('keyup', e => setKey(e.code, false));
 
+
+    // --- CYBER-FLOW RADIO ---
+    const radioPlayer = document.getElementById('radio-player');
+    const radioStations = document.getElementById('radio-stations');
+    const btnRadioPlay = document.getElementById('btn-radio-play');
+    const radioVol = document.getElementById('radio-vol');
+
+    radioPlayer.volume = radioVol.value;
+
+    btnRadioPlay.addEventListener('click', () => {
+      if (radioPlayer.paused) {
+        if (!radioPlayer.src || radioPlayer.src === window.location.href) {
+          if (radioStations.value) {
+            radioPlayer.src = radioStations.value;
+          } else {
+            return; // No station selected
+          }
+        }
+        radioPlayer.play().catch(e => console.error("Radio play error:", e));
+        btnRadioPlay.innerText = "⏸ PAUSE";
+        btnRadioPlay.style.borderColor = "#f0f";
+        btnRadioPlay.style.color = "#f0f";
+        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+      } else {
+        radioPlayer.pause();
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+      }
+    });
+
+    radioStations.addEventListener('change', () => {
+      if (radioStations.value) {
+        radioPlayer.src = radioStations.value;
+        radioPlayer.play().catch(e => console.error("Radio play error:", e));
+        btnRadioPlay.innerText = "⏸ PAUSE";
+        btnRadioPlay.style.borderColor = "#f0f";
+        btnRadioPlay.style.color = "#f0f";
+        btnRadioPlay.style.boxShadow = "0 0 10px #f0f";
+      } else {
+        radioPlayer.pause();
+        radioPlayer.src = "";
+        btnRadioPlay.innerText = "▶ PLAY";
+        btnRadioPlay.style.borderColor = "#0ff";
+        btnRadioPlay.style.color = "#0ff";
+        btnRadioPlay.style.boxShadow = "0 0 10px #0ff";
+      }
+    });
+
+    radioVol.addEventListener('input', () => {
+      radioPlayer.volume = radioVol.value;
+    });
+
     // Touch UI
+
     const addTouch = (id, prop) => {
       let el = document.getElementById(id);
       el.addEventListener('touchstart', e => { e.preventDefault(); this.input[prop] = true; audio.ctx.resume(); });
