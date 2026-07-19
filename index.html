@@ -128,8 +128,8 @@ class Entity extends Rect {
 class Player extends Entity {
   constructor(x, y) {
     super(x, y, 24, 24); // Hitbox
-    this.speed = 250;
-    this.jumpForce = -450;
+    this.speed = 300;
+    this.jumpForce = -600;
     this.grounded = false;
     this.state = 'idle'; // idle, run, jump
     this.animTimer = 0;
@@ -151,8 +151,8 @@ class Player extends Entity {
       audio.jump();
     }
 
-    this.vy += 1500 * dt; // Gravity
-    if (this.vy > 800) this.vy = 800; // Terminal velocity
+    this.vy += 1200 * dt; // Gravity
+    if (this.vy > 1000) this.vy = 1000; // Terminal velocity
     if (!this.grounded) this.state = 'jump';
 
     this.y += this.vy * dt;
@@ -461,8 +461,8 @@ class Level {
       "........###..........................#####....................C..C..C........G..",
       "...................E.........................................##########.....####",
       "P...............#######.........C........................#......................",
-      "######....###.............###..###....##.....####........#......................",
-      "######....###.............###..###....##.....####........#......................"
+      "#######...####............###..###....##.....####........#......................",
+      "#######...####............###..###....##.....####........#......................"
     ];
     this.height = this.map.length;
     this.width = this.map[0].length;
