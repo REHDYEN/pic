@@ -39,4 +39,35 @@ test.describe('Cyberpunk Cat Platformer', () => {
     // Check if the button changed to PAUSE (Note: Playwright bypasses some autoplay restrictions)
     await expect(btnPlay).toHaveText('⏸ PAUSE');
   });
+
+  test('Player can reach the goal and load next level', async ({ page }) => {
+      await page.goto('file://' + require('path').resolve(__dirname, '../index.html'));
+      await page.waitForTimeout(500);
+
+      // Verify we are on level 0
+      const currentLevelIndex = await page.evaluate(() => window.game.currentLevelIndex);
+      expect(currentLevelIndex).toBe(0);
+
+      // Teleport player near the goal
+      await page.evaluate(() => {
+          window.game.player.x = window.game.level.goal.x - 30;
+          window.game.player.y = window.game.level.goal.y;
+      });
+
+      // Move right to touch the goal
+      await page.keyboard.down('ArrowRight');
+      await page.waitForTimeout(200);
+      await page.keyboard.up('ArrowRight');
+
+      // Check if "NIVEL COMPLETADO" message appears
+      await expect(page.locator('#msg-container')).toBeVisible();
+      await expect(page.locator('#msg-text')).toContainText('NIVEL COMPLETADO');
+
+      // Wait for the next level to load (timeout is 2000ms)
+      await page.waitForTimeout(2500);
+
+      // Verify we are on level 1
+      const newLevelIndex = await page.evaluate(() => window.game.currentLevelIndex);
+      expect(newLevelIndex).toBe(1);
+  });
 });
